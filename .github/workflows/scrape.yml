@@ -1,0 +1,47 @@
+name: Scrape & Sync Manhwa Data
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:        # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install httpx selectolax
+
+      - name: Scrape Manhwa Data
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
+        run: python .github/scripts/scrape_and_sync.py
+
+      - name: Upload data artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: manhwa-data
+          path: data/manhwa.json
+
+      - name: Release
+        if: github.event_name == 'workflow_dispatch' || github.run_number % 4 == 0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: manhwa-latest
+          name: Manhwa Data Update
+          body: Auto-scraped manhwa metadata
+          files: data/manhwa.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
