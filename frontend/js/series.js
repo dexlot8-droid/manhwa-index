@@ -15,47 +15,49 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function loadSeriesDetail(seriesId) {
-    const data = await fetchJSON(`${API_BASE}/series:${seriesId}`);
+    const [seriesData, chaptersData] = await Promise.all([
+        getSeries(seriesId),
+        getChapterList(seriesId)
+    ]);
+    
     const loading = document.getElementById('loading');
     const detailEl = document.getElementById('series-detail');
     const chapterEl = document.getElementById('chapter-list');
     
-    if (!data) {
+    if (!seriesData) {
         loading.textContent = 'Series not found.';
         return;
     }
     
     loading.style.display = 'none';
-    document.getElementById('pageTitle').textContent = data.title;
+    document.getElementById('pageTitle').textContent = seriesData.title;
     
-    // Render series info
     detailEl.innerHTML = `
-        <img src="${data.cover_url || '/img/placeholder.svg'}" 
-             alt="${escapeHtml(data.title)}"
+        <img src="${seriesData.cover_url || '/img/placeholder.svg'}" 
+             alt="${escapeHtml(seriesData.title)}"
              onerror="this.src='/img/placeholder.svg'">
         <div class="info">
-            <h2>${escapeHtml(data.title)}</h2>
+            <h2>${escapeHtml(seriesData.title)}</h2>
             <div class="meta">
-                <span>Author: ${escapeHtml(data.author || 'Unknown')}</span>
-                <span>Status: ${data.status}</span>
+                <span>Author: ${escapeHtml(seriesData.author || 'Unknown')}</span>
+                <span>Status: ${seriesData.status}</span>
             </div>
             <div class="meta">
-                ${(data.tags || []).map(t => `<span>#${escapeHtml(t)}</span>`).join('')}
+                ${(seriesData.tags || []).map(t => `<span>#${escapeHtml(t)}</span>`).join('')}
             </div>
-            <p class="description">${escapeHtml(data.description || 'No description.')}</p>
-            <p style="color:#888;font-size:0.85rem;margin-top:10px">${data.chapter_count || 0} chapters</p>
+            <p class="description">${escapeHtml(seriesData.description || 'No description.')}</p>
+            <p style="color:#888;font-size:0.85rem;margin-top:10px">${seriesData.chapter_count || 0} chapters</p>
         </div>
     `;
     
-    // Render chapter list (newest first)
-    const chapters = data.chapters || [];
+    const chapters = (chaptersData && chaptersData.chapters) || [];
     if (chapters.length > 0) {
         chapterEl.innerHTML = `
             <h3>Chapters (${chapters.length})</h3>
             <div class="chapter-list">
                 ${chapters.map(ch => `
                     <a href="/chapter.html?id=${ch.id}" class="chapter-item">
-                        <span class="number">Ch. ${ch.chapter_number}</span>
+                        <span class="number">Ch. ${ch.number}</span>
                         <span class="title">${escapeHtml(ch.title || '')}</span>
                     </a>
                 `).join('')}
@@ -68,7 +70,7 @@ async function loadSeriesDetail(seriesId) {
 
 function escapeHtml(text) {
     if (!text) return '';
-    const div = document.createElement('div');
+    var div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }

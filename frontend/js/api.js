@@ -1,11 +1,15 @@
 /**
  * API client for Manhwa Index frontend.
- * For local dev: talks directly to FastAPI backend on same origin.
+ * In production: talks to Cloudflare Worker which reads from KV.
  */
+
+const API_BASE = self.location.hostname.includes('pages.dev') 
+    ? 'https://manhwa-kv-proxy.dexlot8.workers.dev'
+    : '';
 
 async function fetchJSON(url) {
     try {
-        const res = await fetch(url);
+        const res = await fetch(API_BASE + url);
         if (!res.ok) return null;
         return await res.json();
     } catch (err) {
@@ -14,20 +18,24 @@ async function fetchJSON(url) {
     }
 }
 
-// --- Public API (FastAPI) ---
+// --- Public API ---
 
 async function getAllSeries() {
-    return await fetchJSON('/api/series');
+    return await fetchJSON('/all_series');
 }
 
 async function getSeries(seriesId) {
-    return await fetchJSON('/api/series/' + seriesId);
+    return await fetchJSON('/series:' + seriesId);
+}
+
+async function getChapterList(seriesId) {
+    return await fetchJSON('/chapters:' + seriesId);
 }
 
 async function getChapter(chapterId) {
-    return await fetchJSON('/api/chapter/' + chapterId);
+    return await fetchJSON('/chapter:' + chapterId);
 }
 
-async function getStats() {
-    return await fetchJSON('/api/stats');
+async function getPopular() {
+    return await fetchJSON('/popular');
 }

@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadStats();
     await loadSeries();
     
-    // Search handler
     const searchInput = document.getElementById('searchInput');
     searchInput.addEventListener('input', (e) => {
         filterSeries(e.target.value);
@@ -16,29 +15,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function loadStats() {
-    const data = await getStats();
-    if (data) {
+    const data = await getAllSeries();
+    if (data && data.series) {
+        const total = data.series.length;
+        const totalChapters = data.series.reduce(function(sum, s) { return sum + (s.chapter_count || 0); }, 0);
         document.getElementById('stats').innerHTML = 
-            '<strong>' + data.active_series + '</strong> series indexed &bull; ' +
-            '<strong>' + data.active_chapters + '</strong> chapters &bull; ' +
-            '<strong>' + (data.active_chapters * 30).toLocaleString() + '+</strong> pages';
+            '<strong>' + total + '</strong> series indexed &bull; ' +
+            '<strong>' + totalChapters + '</strong> chapters &bull; ' +
+            '<strong>' + (totalChapters * 30).toLocaleString() + '+</strong> pages';
     }
 }
 
 async function loadSeries() {
-    const seriesList = await getAllSeries();
+    const data = await getAllSeries();
     const loading = document.getElementById('loading');
     const grid = document.getElementById('series-grid');
     
-    if (!seriesList || seriesList.length === 0) {
-        loading.textContent = 'No series indexed yet. Add one via the admin panel at /admin';
-        loading.innerHTML += '<br><br><a href="/admin" style="color:#61afef">Open Admin Panel</a>';
+    if (!data || !data.series || data.series.length === 0) {
+        loading.textContent = 'No series indexed yet.';
         return;
     }
     
     loading.style.display = 'none';
-    allSeries = seriesList;
-    
+    allSeries = data.series;
     renderSeries(allSeries);
 }
 
