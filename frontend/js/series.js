@@ -4,65 +4,65 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.search);
-    const seriesId = params.get('id');
+    const slug = params.get('slug');
     
-    if (!seriesId) {
-        document.getElementById('loading').textContent = 'No series ID.';
+    if (!slug) {
+        document.getElementById('loading').textContent = 'No series slug.';
         return;
     }
     
-    await loadSeriesDetail(seriesId);
+    await loadSeriesDetail(slug);
 });
 
-async function loadSeriesDetail(seriesId) {
-    const [seriesData, chaptersData] = await Promise.all([
-        getSeries(seriesId),
-        getChapterList(seriesId)
-    ]);
-    
+async function loadSeriesDetail(slug) {
+    const data = await getSeries(slug);
     const loading = document.getElementById('loading');
     const detailEl = document.getElementById('series-detail');
     const chapterEl = document.getElementById('chapter-list');
     
-    if (!seriesData) {
+    if (!data) {
         loading.textContent = 'Series not found.';
         return;
     }
     
     loading.style.display = 'none';
-    document.getElementById('pageTitle').textContent = seriesData.title;
+    document.getElementById('pageTitle').textContent = data.title;
     
     detailEl.innerHTML = `
-        <img src="${seriesData.cover_url || '/img/placeholder.svg'}" 
-             alt="${escapeHtml(seriesData.title)}"
+        <img src="${data.cover_url || '/img/placeholder.svg'}" 
+             alt="${escapeHtml(data.title)}"
              onerror="this.src='/img/placeholder.svg'">
         <div class="info">
-            <h2>${escapeHtml(seriesData.title)}</h2>
+            <h2>${escapeHtml(data.title)}</h2>
             <div class="meta">
-                <span>Author: ${escapeHtml(seriesData.author || 'Unknown')}</span>
-                <span>Status: ${seriesData.status}</span>
+                <span>Author: ${escapeHtml(data.author || 'Unknown')}</span>
+                <span>Status: ${data.status}</span>
             </div>
             <div class="meta">
-                ${(seriesData.tags || []).map(t => `<span>#${escapeHtml(t)}</span>`).join('')}
+                ${(data.tags || []).map(t => `<span>#${escapeHtml(t)}</span>`).join('')}
             </div>
-            <p class="description">${escapeHtml(seriesData.description || 'No description.')}</p>
-            <p style="color:#888;font-size:0.85rem;margin-top:10px">${seriesData.chapter_count || 0} chapters</p>
+            <p class="description">${escapeHtml(data.description || 'No description.')}</p>
+            <p style="color:#888;font-size:0.85rem;margin-top:10px">${data.chapter_count || 0} chapters</p>
         </div>
     `;
     
-    const chapters = (chaptersData && chaptersData.chapters) || [];
-    if (chapters.length > 0) {
-        chapterEl.innerHTML = `
-            <h3>Chapters (${chapters.length})</h3>
-            <div class="chapter-list">
-                ${chapters.map(ch => `
-                    <a href="/chapter.html?id=${ch.id}" class="chapter-item">
-                        <span class="number">Ch. ${ch.number}</span>
-                        <span class="title">${escapeHtml(ch.title || '')}</span>
-                    </a>
-                `).join('')}
-            </div>
-        `;
+    // For now show placeholder chapters
+    const chCount = data.chapter_count || 0;
+    if (chCount > 0) {
+        let chHtml = '<h3>Chapters</h3><div class="chapter-list">';
+        for (let i = 1; i <= Math.min(chCount, 10); i++) {
+            chHtml += `
+                <a href="/chapter.html?slug=${encodeURIComponent(data.slug)}&ch=${i}" class="chapter-item">
+                    <span class="number">Ch. ${i}</span>
+                    <span class="title">Chapter ${i}</span>
+                </a>
+            `;
+        }
+        if (chCount > 10) {
+            chHtml += `<p style="color:#888;margin-top:10px">... and ${chCount - 10} more chapters</p>`;
+        }
+        chHtml += '</div>';
+        chapterEl.innerHTML = chHtml;
     } else {
         chapterEl.innerHTML = '<p style="color:#666">No chapters indexed yet.</p>';
     }

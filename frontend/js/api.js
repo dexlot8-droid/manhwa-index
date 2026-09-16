@@ -24,8 +24,8 @@ async function getAllSeries() {
     return await fetchJSON('/all_series');
 }
 
-async function getSeries(seriesId) {
-    return await fetchJSON('/series:' + seriesId);
+async function getSeries(slug) {
+    return await fetchJSON('/series:' + slug);
 }
 
 async function getChapterList(seriesId) {
