@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
+  <rect width="300" height="400" fill="#1a1a1a"/>
+  <text x="150" y="180" fill="#555" font-family="sans-serif" font-size="14" text-anchor="middle">No Cover</text>
+  <text x="150" y="210" fill="#444" font-family="sans-serif" font-size="10" text-anchor="middle">Image unavailable</text>
+</svg>
