@@ -38,6 +38,20 @@ async function loadSeries() {
     
     loading.style.display = 'none';
     allSeries = data.series;
+    
+    // Fetch real cover URLs from individual series endpoints
+    for (var i = 0; i < allSeries.length; i++) {
+        var s = allSeries[i];
+        if (!s.cover_url || s.cover_url.indexOf('abyssrift.com') === -1) {
+            try {
+                var detail = await getSeries(s.slug);
+                if (detail && detail.cover_url && detail.cover_url.indexOf('abyssrift.com') !== -1) {
+                    s.cover_url = detail.cover_url;
+                }
+            } catch(e) {}
+        }
+    }
+    
     renderSeries(allSeries);
 }
 
