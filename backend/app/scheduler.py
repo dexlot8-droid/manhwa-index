@@ -1,47 +1,56 @@
+"""
+Scheduler for scraping manhwa series using MangaDex.
+"""
+
 import asyncio
 import logging
 from datetime import datetime
 from sqlalchemy import select
 from .models import async_session, Series, Chapter, ScrapeLog, init_db
-from .scraper import ScraperFactory, MultiSourceScraper
+from .mangadex_scraper import MangaDexScraper
 from .kv_sync import (
     sync_series, sync_chapter, sync_chapter_list, sync_all_series_list,
     sync_popular, delete_series_from_kv, close as close_kv
 )
-from .config import SCRAPE_DELAY
 
 logger = logging.getLogger(__name__)
 
 
 async def scrape_series(series: Series) -> dict:
-    """Scrape a single series: metadata + all chapters.
-    Uses MultiSourceScraper with fallback logic.
-
-    Returns dict with scrape results.
-    """
-    multi_scraper = MultiSourceScraper()
+    """Scrape a single series using MangaDex."""
+    scraper = MangaDexScraper()
 
     try:
-        result = await multi_scraper.scrape_series(series)
+        # Search for the series on MangaDex
+        results = await scraper.search_series(series.title)
+        if not results:
+            return {"success": False, "error": "Series not found on MangaDex"}
 
-        if not result or not result.get("chapters"):
-            return {"success": False, "error": "No chapters found from any source"}
+        manga = results[0]
+        manga_id = manga["id"]
+
+        # Get chapters
+        chapters_data = await scraper.get_chapters(f"https://mangadex.org/title/{manga_id}")
+
+        if not chapters_data:
+            return {"success": False, "error": "No chapters found"}
+
+        # Get images for each chapter (limit to first 20 for speed)
+        for ch in chapters_data[:20]:
+            ch_id = ch["source_url"].split("/")[-1]
+            images = await scraper.get_chapter_images(ch_id)
+            ch["image_urls"] = images
 
         # Update series metadata
-        series_data = result.get("series", {})
-        if series_data:
-            series.title = series_data.get("title", series.title)
-            series.cover_url = series_data.get("cover_url", series.cover_url)
-            series.description = series_data.get("description", series.description)
-            series.author = series_data.get("author", series.author)
-            series.tags = series_data.get("tags", [])
-            series.status = series_data.get("status", series.status)
+        series.title = manga["title"]
+        series.cover_url = manga["cover_url"]
+        series.description = manga["description"]
+        series.author = manga.get("author", "Unknown")
+        series.tags = manga.get("tags", [])
+        series.status = manga["status"]
 
-        # Process chapters
-        chapters_data = result["chapters"]
-
-        # Track which chapters we already have (by number)
-        existing_chapters: dict[float, Chapter] = {}
+        # Track existing chapters
+        existing_chapters = {}
         for ch in series.chapters:
             if ch.is_active:
                 existing_chapters[ch.chapter_number] = ch
@@ -50,7 +59,6 @@ async def scrape_series(series: Series) -> dict:
         for ch_data in chapters_data:
             ch_num = ch_data["chapter_number"]
             if ch_num in existing_chapters:
-                # Update existing chapter if needed
                 existing = existing_chapters[ch_num]
                 if len(ch_data.get("image_urls", [])) > existing.image_count:
                     existing.image_urls = ch_data["image_urls"]
@@ -59,7 +67,6 @@ async def scrape_series(series: Series) -> dict:
                     existing.title = ch_data.get("title", existing.title)
                     new_chapters.append(existing)
             else:
-                # Create new chapter
                 new_ch = Chapter(
                     series_id=series.id,
                     chapter_number=ch_num,
@@ -79,7 +86,7 @@ async def scrape_series(series: Series) -> dict:
         logger.error(f"Scrape failed for series {series.slug}: {e}")
         return {"success": False, "error": str(e)}
     finally:
-        await multi_scraper.close()
+        await scraper.close()
 
 
 async def sync_series_to_kv(series: Series) -> None:
@@ -93,7 +100,7 @@ async def sync_series_to_kv(series: Series) -> None:
 
 
 async def sync_all_series() -> dict:
-    """Sync all active series to KV (rebuild the 'all_series' key)."""
+    """Sync all active series to KV."""
     async with async_session() as session:
         result = await session.execute(
             select(Series).where(Series.is_active == True)
@@ -133,20 +140,20 @@ async def run_scrape_job() -> dict:
 
 async def add_series(source_url: str) -> dict:
     """Add a new series to the database."""
-    factory = ScraperFactory()
-    scraper = factory.get_by_url(source_url)
-    if not scraper:
-        return {"success": False, "error": "Unsupported source site"}
-
+    scraper = MangaDexScraper()
     try:
-        # Parse URL to get source info
-        source_site = scraper.name
-        series_slug = scraper.extract_slug(source_url)
+        # Search for the series
+        results = await scraper.search_series(source_url)
+        if not results:
+            return {"success": False, "error": "Series not found on MangaDex"}
+
+        manga = results[0]
+        manga_id = manga["id"]
 
         # Check if already exists
         async with async_session() as session:
             result = await session.execute(
-                select(Series).where(Series.slug == series_slug)
+                select(Series).where(Series.source_id == manga_id)
             )
             existing = result.scalar_one_or_none()
             if existing:
@@ -154,11 +161,16 @@ async def add_series(source_url: str) -> dict:
 
             # Create new series
             new_series = Series(
-                slug=series_slug,
-                title=series_slug.replace("-", " ").title(),  # placeholder
-                source_site=source_site,
-                source_id=series_slug,
-                source_url=source_url,
+                slug=manga["title"].lower().replace(" ", "-"),
+                title=manga["title"],
+                cover_url=manga["cover_url"],
+                description=manga["description"],
+                author=manga.get("author", "Unknown"),
+                status=manga["status"],
+                tags=manga.get("tags", []),
+                source_site="mangadex",
+                source_id=manga_id,
+                source_url=f"https://mangadex.org/title/{manga_id}",
             )
             session.add(new_series)
             await session.commit()
@@ -176,7 +188,6 @@ async def add_series(source_url: str) -> dict:
                     "chapters": scrape_result.get("total_chapters", 0),
                 }
             else:
-                # Rollback on failure
                 await session.delete(new_series)
                 await session.commit()
                 return {"success": False, "error": scrape_result.get("error", "Scrape failed")}
@@ -184,6 +195,8 @@ async def add_series(source_url: str) -> dict:
     except Exception as e:
         logger.error(f"Failed to add series: {e}")
         return {"success": False, "error": str(e)}
+    finally:
+        await scraper.close()
 
 
 async def kill_switch(series_slug: str) -> dict:
@@ -196,16 +209,13 @@ async def kill_switch(series_slug: str) -> dict:
         if not series:
             return {"success": False, "error": "Series not found"}
 
-        # Mark as inactive
         series.is_active = False
         series.updated_at = datetime.utcnow()
 
-        # Mark chapters as inactive
         chapter_ids = [ch.id for ch in series.chapters if ch.is_active]
         for ch in series.chapters:
             ch.is_active = False
 
-        # Log it
         log = ScrapeLog(
             series_id=series.id,
             action="kill_switch",
@@ -214,7 +224,6 @@ async def kill_switch(series_slug: str) -> dict:
         session.add(log)
         await session.commit()
 
-        # Purge from KV
         await delete_series_from_kv(series.id, chapter_ids)
         await sync_all_series()
 
