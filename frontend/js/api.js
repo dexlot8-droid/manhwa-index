@@ -4,7 +4,7 @@
  */
 
 const API_BASE = self.location.hostname.includes('pages.dev') 
-    ? 'https://manhwa-kv-proxy.dexlot8.workers.dev'
+    ? 'https://manhwa-kv-proxy.dexlot8.workers.dev' 
     : '';
 
 async function fetchJSON(url) {

@@ -3,26 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title id="pageTitle">Chapter</title>
+    <title>Chapter - Manhwa Index</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
-<body class="reader-body">
-    <header class="reader-header">
+<body>
+    <header>
         <div class="container">
-            <a href="/" class="back-link">&larr; Browse</a>
-            <span id="chapter-info"></span>
+            <h1><a href="/">Manhwa Index</a></h1>
+            <p class="subtitle">Browse hotlinked manhwa chapters from top sources</p>
         </div>
     </header>
 
-    <main class="container reader">
-        <div id="chapter-images"></div>
-        <div id="loading">Loading chapter...</div>
-        <div id="chapter-nav" class="chapter-nav"></div>
+    <main class="container">
+        <div id="loading">Loading...</div>
+        <div class="chapter-reader" id="reader" style="display:none">
+            <h1 id="chapterTitle"></h1>
+            <div class="chapter-nav">
+                <a href="#" id="prevCh">← Previous</a>
+                <a href="#" id="nextCh">Next →</a>
+            </div>
+            <div id="chapterImages"></div>
+            <div class="chapter-nav" style="margin-top:20px">
+                <a href="#" id="prevCh2">← Previous</a>
+                <a href="#" id="nextCh2">Next →</a>
+            </div>
+        </div>
     </main>
 
-    <footer class="reader-footer">
+    <footer>
         <div class="container">
-            <p>Images hotlinked from original sources.</p>
+            <p>Images hotlinked from original sources. No images hosted here.</p>
         </div>
     </footer>
 

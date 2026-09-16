@@ -3,22 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title id="pageTitle">Series</title>
+    <title>Series - Manhwa Index</title>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
     <header>
         <div class="container">
             <h1><a href="/">Manhwa Index</a></h1>
+            <p class="subtitle">Browse hotlinked manhwa chapters from top sources</p>
         </div>
     </header>
 
     <main class="container">
-        <a href="/" class="back-link">&larr; Back to browse</a>
+        <div id="loading">Loading...</div>
         <div id="series-detail"></div>
         <div id="chapter-list"></div>
-        <div id="loading">Loading...</div>
     </main>
+
+    <footer>
+        <div class="container">
+            <p>Images hotlinked from original sources. No images hosted here.</p>
+        </div>
+    </footer>
 
     <script src="/js/api.js"></script>
     <script src="/js/series.js"></script>

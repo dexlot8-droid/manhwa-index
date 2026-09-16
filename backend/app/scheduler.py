@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from sqlalchemy import select
 from .models import async_session, Series, Chapter, ScrapeLog, init_db
-from .scraper import ScraperFactory
+from .scraper import ScraperFactory, MultiSourceScraper
 from .kv_sync import (
     sync_series, sync_chapter, sync_chapter_list, sync_all_series_list,
     sync_popular, delete_series_from_kv, close as close_kv
@@ -15,27 +15,30 @@ logger = logging.getLogger(__name__)
 
 async def scrape_series(series: Series) -> dict:
     """Scrape a single series: metadata + all chapters.
+    Uses MultiSourceScraper with fallback logic.
 
     Returns dict with scrape results.
     """
-    factory = ScraperFactory()
-    scraper = factory.get(series.source_site)
-    if not scraper:
-        return {"success": False, "error": f"Unknown source site: {series.source_site}"}
+    multi_scraper = MultiSourceScraper()
 
     try:
-        # Scrape metadata
-        meta = await scraper.get_series(series.source_url)
-        if meta:
-            series.title = meta.get("title", series.title)
-            series.cover_url = meta.get("cover_url", series.cover_url)
-            series.description = meta.get("description", series.description)
-            series.author = meta.get("author", series.author)
-            series.tags = meta.get("tags", [])
-            series.status = meta.get("status", series.status)
+        result = await multi_scraper.scrape_series(series)
 
-        # Scrape chapters
-        chapters_data = await scraper.get_chapters(series.source_url)
+        if not result or not result.get("chapters"):
+            return {"success": False, "error": "No chapters found from any source"}
+
+        # Update series metadata
+        series_data = result.get("series", {})
+        if series_data:
+            series.title = series_data.get("title", series.title)
+            series.cover_url = series_data.get("cover_url", series.cover_url)
+            series.description = series_data.get("description", series.description)
+            series.author = series_data.get("author", series.author)
+            series.tags = series_data.get("tags", [])
+            series.status = series_data.get("status", series.status)
+
+        # Process chapters
+        chapters_data = result["chapters"]
 
         # Track which chapters we already have (by number)
         existing_chapters: dict[float, Chapter] = {}
@@ -75,6 +78,8 @@ async def scrape_series(series: Series) -> dict:
     except Exception as e:
         logger.error(f"Scrape failed for series {series.slug}: {e}")
         return {"success": False, "error": str(e)}
+    finally:
+        await multi_scraper.close()
 
 
 async def sync_series_to_kv(series: Series) -> None:

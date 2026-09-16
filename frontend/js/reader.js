@@ -1,95 +1,63 @@
 /**
- * Chapter reader page — loads image URLs and displays them.
+ * Chapter reader page — displays images with navigation.
  */
 
-let currentChapter = null;
-let seriesChapters = [];
+let currentChapter = 0;
+let seriesSlug = '';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.search);
-    const chapterId = params.get('id');
+    seriesSlug = params.get('slug') || '';
+    currentChapter = parseInt(params.get('ch') || '1');
     
-    if (!chapterId) {
-        document.getElementById('loading').textContent = 'No chapter ID.';
+    if (!seriesSlug) {
+        document.getElementById('loading').textContent = 'No series specified.';
         return;
     }
     
-    await loadChapter(chapterId);
+    await loadChapter();
 });
 
-async function loadChapter(chapterId) {
-    const data = await fetchJSON(`${API_BASE}/chapter:${chapterId}`);
+async function loadChapter() {
     const loading = document.getElementById('loading');
-    const imagesEl = document.getElementById('chapter-images');
-    const infoEl = document.getElementById('chapter-info');
-    const navEl = document.getElementById('chapter-nav');
+    const reader = document.getElementById('reader');
+    const titleEl = document.getElementById('chapterTitle');
+    const imagesEl = document.getElementById('chapterImages');
     
-    if (!data) {
+    // Get chapter data
+    const data = await getChapter(seriesSlug + ':' + currentChapter);
+    
+    if (!data || !data.image_urls || data.image_urls.length === 0) {
         loading.textContent = 'Chapter not found.';
         return;
     }
     
     loading.style.display = 'none';
-    currentChapter = data;
+    reader.style.display = 'block';
     
-    document.getElementById('pageTitle').textContent = `Chapter ${data.chapter_number}`;
-    infoEl.textContent = `Chapter ${data.chapter_number}${data.title ? ' — ' + data.title : ''} (${data.image_count} pages)`;
+    titleEl.textContent = data.title || ('Chapter ' + currentChapter);
     
-    // Render images
-    const imageUrls = data.image_urls || [];
-    if (imageUrls.length > 0) {
-        imagesEl.innerHTML = imageUrls.map(url => 
-            `<img src="${escapeHtml(url)}" alt="Page" loading="lazy" onerror="this.style.display='none'">`
-        ).join('');
-    } else {
-        imagesEl.innerHTML = '<p style="color:#666;text-align:center;padding:40px">No images found for this chapter.</p>';
+    // Render images with lazy loading
+    let html = '';
+    for (let i = 0; i < data.image_urls.length; i++) {
+        const imgUrl = data.image_urls[i];
+        html += `<img src="${imgUrl}" alt="Page ${i + 1}" loading="lazy" onerror="this.style.display='none'">`;
     }
+    imagesEl.innerHTML = html;
     
-    // Load series chapters for prev/next navigation
-    if (data.series_id) {
-        const seriesData = await fetchJSON(`${API_BASE}/series:${data.series_id}`);
-        if (seriesData && seriesData.chapters) {
-            seriesChapters = seriesData.chapters;
-            renderNav(chapterId, data.series_id);
-        }
-    }
-}
-
-function renderNav(currentChapterId, seriesId) {
-    const navEl = document.getElementById('chapter-nav');
-    const currentIndex = seriesChapters.findIndex(ch => ch.id == currentChapterId);
+    // Update navigation
+    document.getElementById('prevCh').href = `/chapter.html?slug=${encodeURIComponent(seriesSlug)}&ch=${currentChapter - 1}`;
+    document.getElementById('nextCh').href = `/chapter.html?slug=${encodeURIComponent(seriesSlug)}&ch=${currentChapter + 1}`;
+    document.getElementById('prevCh2').href = `/chapter.html?slug=${encodeURIComponent(seriesSlug)}&ch=${currentChapter - 1}`;
+    document.getElementById('nextCh2').href = `/chapter.html?slug=${encodeURIComponent(seriesSlug)}&ch=${currentChapter + 1}`;
     
-    const prev = currentIndex < seriesChapters.length - 1 ? seriesChapters[currentIndex + 1] : null;
-    const next = currentIndex > 0 ? seriesChapters[currentIndex - 1] : null;
-    
-    navEl.innerHTML = `
-        <a href="${prev ? '/chapter.html?id=' + prev.id : '#'}" 
-           class="${prev ? '' : 'disabled'}">
-            ← Ch. ${prev ? prev.chapter_number : '—'}
-        </a>
-        <a href="/series.html?id=${seriesId}" class="disabled" style="flex:0.5">
-            All Chapters
-        </a>
-        <a href="${next ? '/chapter.html?id=' + next.id : '#'}" 
-           class="${next ? '' : 'disabled'}">
-            Ch. ${next ? next.chapter_number : '—'} →
-        </a>
-    `;
+    // Update page title
+    document.title = `${data.title || 'Chapter ' + currentChapter} - Manhwa Index`;
 }
 
 function escapeHtml(text) {
     if (!text) return '';
-    const div = document.createElement('div');
+    var div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
-
-// Keyboard navigation
-document.addEventListener('keydown', (e) => {
-    const links = document.querySelectorAll('.chapter-nav a');
-    if (e.key === 'ArrowLeft' && links[0] && !links[0].classList.contains('disabled')) {
-        links[0].click();
-    } else if (e.key === 'ArrowRight' && links[2] && !links[2].classList.contains('disabled')) {
-        links[2].click();
-    }
-});

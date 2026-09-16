@@ -29,16 +29,18 @@ async function loadSeriesDetail(slug) {
     document.getElementById('pageTitle').textContent = data.title;
     
     detailEl.innerHTML = `
-        <img src="${data.cover_url || '/img/placeholder.svg'}" 
-             alt="${escapeHtml(data.title)}"
-             onerror="this.src='/img/placeholder.svg'">
+        <div class="cover">
+            <img src="${data.cover_url || '/img/placeholder.svg'}" 
+                 alt="${escapeHtml(data.title)}"
+                 onerror="this.src='/img/placeholder.svg'">
+        </div>
         <div class="info">
             <h2>${escapeHtml(data.title)}</h2>
             <div class="meta">
                 <span>Author: ${escapeHtml(data.author || 'Unknown')}</span>
                 <span>Status: ${data.status}</span>
             </div>
-            <div class="meta">
+            <div class="tags">
                 ${(data.tags || []).map(t => `<span>#${escapeHtml(t)}</span>`).join('')}
             </div>
             <p class="description">${escapeHtml(data.description || 'No description.')}</p>

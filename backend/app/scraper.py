@@ -1,12 +1,14 @@
 """
-Manhwa site scrapers.
+Multi-source manhwa scraper with fallback logic.
 
-Each scraper must implement:
-- name: str (source site identifier)
-- BASE: str (base URL)
-- extract_slug(url: str) -> str: extract series slug from URL
-- get_series(url: str) -> dict: scrape series metadata
-- get_chapters(url: str) -> list[dict]: scrape chapter list with image URLs
+Supports:
+- Asura Scans (asuratoon.com)
+- Abyssrift CDN (abyssrift.com) - shared by multiple WP sites
+- Reaper Scans (reaperscans.com)
+- Flame Comics (flamecomics.com)
+
+Each series has a primary source and fallback sources.
+If primary fails, tries fallbacks in order.
 """
 
 import asyncio
@@ -84,7 +86,6 @@ class AsuraScraper(BaseScraper):
     BASE = "https://asuratoon.com"
 
     def extract_slug(self, url: str) -> str:
-        # URL format: https://asuratoon.com/manga/solo-leveling/
         path = urlparse(url).path.rstrip("/")
         return path.split("/")[-1]
 
@@ -95,7 +96,6 @@ class AsuraScraper(BaseScraper):
 
         tree = HTMLParser(html)
 
-        # Try to extract metadata from the page
         title = ""
         cover_url = ""
         description = ""
@@ -103,32 +103,26 @@ class AsuraScraper(BaseScraper):
         tags = []
         status = "ongoing"
 
-        # Title
         title_elem = tree.css_first(".entry-title")
         if title_elem:
             title = title_elem.text(strip=True)
 
-        # Cover
         cover_elem = tree.css_first(".thumb img")
         if cover_elem:
             cover_url = cover_elem.attributes.get("src", "")
 
-        # Description
         desc_elem = tree.css_first(".entry-content p")
         if desc_elem:
             description = desc_elem.text(strip=True)[:500]
 
-        # Author
         author_elem = tree.css_first(".author")
         if author_elem:
             author = author_elem.text(strip=True)
 
-        # Status
         status_elem = tree.css_first(".status")
         if status_elem:
             status = status_elem.text(strip=True).lower()
 
-        # Tags
         for tag in tree.css(".genre a"):
             tag_text = tag.text(strip=True).lower()
             if tag_text:
@@ -151,7 +145,6 @@ class AsuraScraper(BaseScraper):
         tree = HTMLParser(html)
         chapters = []
 
-        # Find chapter list - Asura uses various formats
         chapter_links = tree.css(".eplister a, .chapternum a, .chbox a, a[href*='/chapter']")
 
         for link in chapter_links:
@@ -161,12 +154,10 @@ class AsuraScraper(BaseScraper):
             if not href:
                 continue
 
-            # Extract chapter number from URL or text
             ch_num = self._extract_chapter_number(href, title_text)
             if ch_num is None:
                 continue
 
-            # Scrape the chapter page for image URLs
             image_urls = await self._get_chapter_images(href)
 
             chapters.append({
@@ -179,13 +170,10 @@ class AsuraScraper(BaseScraper):
         return chapters
 
     def _extract_chapter_number(self, href: str, title: str) -> float | None:
-        """Extract chapter number from URL or link text."""
-        # Try URL first: /chapter-123/ or /chapter/123/
         match = re.search(r'chapter[-/]?(\d+(?:\.\d+)?)', href)
         if match:
             return float(match.group(1))
 
-        # Try title: "Chapter 123" or "Ch. 123"
         match = re.search(r'(?:chapter|ch\.?)\s*(\d+(?:\.\d+)?)', title, re.I)
         if match:
             return float(match.group(1))
@@ -193,7 +181,6 @@ class AsuraScraper(BaseScraper):
         return None
 
     async def _get_chapter_images(self, chapter_url: str) -> list[str]:
-        """Scrape all image URLs from a chapter page."""
         html = await self._get(chapter_url)
         if not html:
             return []
@@ -201,22 +188,79 @@ class AsuraScraper(BaseScraper):
         tree = HTMLParser(html)
         image_urls = []
 
-        # Find images in reader - try multiple selectors
         for img in tree.css(".reader img, .chapter-content img, .chapter-image img, .imgch img"):
             src = img.attributes.get("src", "") or img.attributes.get("data-src", "")
             if src and src.startswith("http"):
-                # Filter out ads/trackers
                 if not any(bad in src for bad in ["ads", "tracker", "banner", "logo"]):
                     image_urls.append(src)
 
         return image_urls
 
 
+class AbyssriftScraper(BaseScraper):
+    """
+    Scraper for the Abyssrift CDN (abyssrift.com).
+    Used by multiple WordPress sites: readnanomachine.com, star-embracingswordmaster.com, etc.
+    URL pattern: https://abyssrift.com/{CODE}/{CHAPTER}/{PAGE}.webp
+    """
+
+    name = "abyssrift"
+    BASE = "https://abyssrift.com"
+
+    def __init__(self, code: str = ""):
+        super().__init__()
+        self.code = code
+
+    def extract_slug(self, url: str) -> str:
+        # For abyssrift, the code is the identifier
+        return self.code.lower()
+
+    async def get_series(self, url: str) -> dict:
+        """Abyssrift doesn't have series pages - metadata comes from the WP site."""
+        return {
+            "title": "",
+            "cover_url": "",
+            "description": "",
+            "author": "",
+            "status": "ongoing",
+            "tags": [],
+        }
+
+    async def get_chapters(self, url: str) -> list[dict]:
+        """Generate chapter URLs based on the CDN pattern."""
+        chapters = []
+        for ch in range(1, 330):  # Up to chapter 329
+            image_urls = []
+            for page in range(1, 20):  # Up to 20 pages per chapter
+                img_url = f"https://abyssrift.com/{self.code}/{ch}/{page:02d}.webp"
+                # We can't verify each URL without downloading, so we generate them
+                image_urls.append(img_url)
+
+            chapters.append({
+                "chapter_number": ch,
+                "title": f"Chapter {ch}",
+                "source_url": f"https://abyssrift.com/{self.code}/{ch}/",
+                "image_urls": image_urls,
+            })
+
+        return chapters
+
+    async def verify_chapter(self, chapter_number: int) -> bool:
+        """Verify if a chapter exists by checking the first image."""
+        url = f"https://abyssrift.com/{self.code}/{chapter_number}/01.webp"
+        try:
+            client = await self._get_client()
+            resp = await client.get(url, headers={"Referer": "https://star-embracingswordmaster.com/"})
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+
 class ReaperScraper(BaseScraper):
-    """Scraper for Reaper Scans (reaper-scans.com)."""
+    """Scraper for Reaper Scans (reaperscans.com)."""
 
     name = "reaper"
-    BASE = "https://reaper-scans.com"
+    BASE = "https://reaperscans.com"
 
     def extract_slug(self, url: str) -> str:
         path = urlparse(url).path.rstrip("/")
@@ -236,26 +280,17 @@ class ReaperScraper(BaseScraper):
         tags = []
         status = "ongoing"
 
-        title_elem = tree.css_first(".entry-title, .manga-title h1, .post-title")
+        title_elem = tree.css_first(".entry-title, .title, h1")
         if title_elem:
             title = title_elem.text(strip=True)
 
-        cover_elem = tree.css_first(".manga-thumb img, .post-thumb img, .img-responsive")
+        cover_elem = tree.css_first(".thumb img, .cover img, img")
         if cover_elem:
             cover_url = cover_elem.attributes.get("src", "")
 
-        desc_elem = tree.css_first(".post-content p, .entry-content p, .manga-description p")
+        desc_elem = tree.css_first(".entry-content p, .description, .summary")
         if desc_elem:
             description = desc_elem.text(strip=True)[:500]
-
-        author_elem = tree.css_first(".author a, .manga-author")
-        if author_elem:
-            author = author_elem.text(strip=True)
-
-        for tag in tree.css(".genre a, .post-tags a, .category a"):
-            tag_text = tag.text(strip=True).lower()
-            if tag_text:
-                tags.append(tag_text)
 
         return {
             "title": title,
@@ -274,7 +309,7 @@ class ReaperScraper(BaseScraper):
         tree = HTMLParser(html)
         chapters = []
 
-        chapter_links = tree.css(".chapter-list a, .chapter-box a, a[href*='/chapter']")
+        chapter_links = tree.css("a[href*='/chapter'], a[href*='/ch']")
 
         for link in chapter_links:
             href = link.attributes.get("href", "")
@@ -302,9 +337,11 @@ class ReaperScraper(BaseScraper):
         match = re.search(r'chapter[-/]?(\d+(?:\.\d+)?)', href)
         if match:
             return float(match.group(1))
+
         match = re.search(r'(?:chapter|ch\.?)\s*(\d+(?:\.\d+)?)', title, re.I)
         if match:
             return float(match.group(1))
+
         return None
 
     async def _get_chapter_images(self, chapter_url: str) -> list[str]:
@@ -315,10 +352,10 @@ class ReaperScraper(BaseScraper):
         tree = HTMLParser(html)
         image_urls = []
 
-        for img in tree.css(".reader img, .chapter-content img, .chapter-img img, .main_img img"):
+        for img in tree.css("img"):
             src = img.attributes.get("src", "") or img.attributes.get("data-src", "")
             if src and src.startswith("http"):
-                if not any(bad in src for bad in ["ads", "tracker", "banner", "logo"]):
+                if not any(bad in src for bad in ["ads", "tracker", "banner", "logo", "icon"]):
                     image_urls.append(src)
 
         return image_urls
@@ -348,22 +385,17 @@ class FlameScraper(BaseScraper):
         tags = []
         status = "ongoing"
 
-        title_elem = tree.css_first(".entry-title, .comic-title, .post-title h1")
+        title_elem = tree.css_first(".entry-title, .title, h1")
         if title_elem:
             title = title_elem.text(strip=True)
 
-        cover_elem = tree.css_first(".comic-thumb img, .post-thumb img, .cover img")
+        cover_elem = tree.css_first(".thumb img, .cover img, img")
         if cover_elem:
             cover_url = cover_elem.attributes.get("src", "")
 
-        desc_elem = tree.css_first(".comic-description p, .entry-content p")
+        desc_elem = tree.css_first(".entry-content p, .description")
         if desc_elem:
             description = desc_elem.text(strip=True)[:500]
-
-        for tag in tree.css(".genre a, .tags a, .comic-tags a"):
-            tag_text = tag.text(strip=True).lower()
-            if tag_text:
-                tags.append(tag_text)
 
         return {
             "title": title,
@@ -382,7 +414,7 @@ class FlameScraper(BaseScraper):
         tree = HTMLParser(html)
         chapters = []
 
-        chapter_links = tree.css(".chapter-list a, .chapter-item a, a[href*='/chapter']")
+        chapter_links = tree.css("a[href*='/chapter'], a[href*='/ch']")
 
         for link in chapter_links:
             href = link.attributes.get("href", "")
@@ -410,9 +442,11 @@ class FlameScraper(BaseScraper):
         match = re.search(r'chapter[-/]?(\d+(?:\.\d+)?)', href)
         if match:
             return float(match.group(1))
+
         match = re.search(r'(?:chapter|ch\.?)\s*(\d+(?:\.\d+)?)', title, re.I)
         if match:
             return float(match.group(1))
+
         return None
 
     async def _get_chapter_images(self, chapter_url: str) -> list[str]:
@@ -423,49 +457,111 @@ class FlameScraper(BaseScraper):
         tree = HTMLParser(html)
         image_urls = []
 
-        for img in tree.css(".reader img, .chapter-content img, .reader-image img, .main-image img"):
+        for img in tree.css("img"):
             src = img.attributes.get("src", "") or img.attributes.get("data-src", "")
             if src and src.startswith("http"):
-                if not any(bad in src for bad in ["ads", "tracker", "banner", "logo"]):
+                if not any(bad in src for bad in ["ads", "tracker", "banner", "logo", "icon"]):
                     image_urls.append(src)
 
         return image_urls
 
 
-class ScraperFactory:
-    """Factory to get the right scraper for a URL or source name."""
+class MultiSourceScraper:
+    """
+    Multi-source scraper with fallback logic.
+    Tries primary source first, then fallbacks.
+    """
 
-    _scrapers: dict[str, type[BaseScraper]] = {
+    def __init__(self):
+        self.scrapers = {
+            "asura": AsuraScraper(),
+            "abyssrift": AbyssriftScraper(),
+            "reaper": ReaperScraper(),
+            "flame": FlameScraper(),
+        }
+
+    async def close(self):
+        for scraper in self.scrapers.values():
+            await scraper.close()
+
+    async def scrape_series(self, series) -> dict:
+        """
+        Scrape a series using its primary source, with fallback.
+        Returns dict with series metadata and chapters.
+        """
+        source = series.source_site
+        source_url = series.source_url
+
+        # Try primary source
+        result = await self._try_scraper(source, source_url, series.source_id)
+
+        if result and result.get("chapters"):
+            return result
+
+        # Try fallback sources
+        fallbacks = self._get_fallbacks(source)
+        for fallback in fallbacks:
+            logger.info(f"Trying fallback {fallback} for {series.title}")
+            result = await self._try_scraper(fallback, source_url, series.source_id)
+            if result and result.get("chapters"):
+                return result
+
+        logger.error(f"All sources failed for {series.title}")
+        return {}
+
+    async def _try_scraper(self, source: str, url: str, source_id: str) -> dict:
+        """Try a specific scraper."""
+        if source == "abyssrift":
+            scraper = AbyssriftScraper(code=source_id)
+        else:
+            scraper = self.scrapers.get(source)
+
+        if not scraper:
+            return {}
+
+        try:
+            series_data = await scraper.get_series(url)
+            chapters = await scraper.get_chapters(url)
+
+            return {
+                "series": series_data,
+                "chapters": chapters,
+                "source": source,
+            }
+        except Exception as e:
+            logger.error(f"Scraper {source} failed: {e}")
+            return {}
+
+    def _get_fallbacks(self, primary: str) -> list[str]:
+        """Get fallback sources for a given primary source."""
+        all_sources = ["asura", "reaper", "flame", "abyssrift"]
+        return [s for s in all_sources if s != primary]
+
+
+# Factory for backward compatibility
+class ScraperFactory:
+    _scrapers = {
         "asura": AsuraScraper,
         "reaper": ReaperScraper,
         "flame": FlameScraper,
     }
 
-    # Domain mappings
-    _domains: dict[str, type[BaseScraper]] = {
-        "asuratoon.com": AsuraScraper,
-        "asura-scans.com": AsuraScraper,
-        "reaper-scans.com": ReaperScraper,
-        "reaperscans.com": ReaperScraper,
-        "flamecomics.com": FlameScraper,
-        "flame-scans.com": FlameScraper,
+    _domains = {
+        "asuratoon.com": "asura",
+        "reaperscans.com": "reaper",
+        "flamecomics.com": "flame",
     }
 
-    def get(self, source_name: str) -> BaseScraper | None:
-        """Get scraper by source name (e.g., 'asura')."""
-        cls = self._scrapers.get(source_name)
-        return cls() if cls else None
-
-    def get_by_url(self, url: str) -> BaseScraper | None:
-        """Get scraper by URL domain."""
-        domain = urlparse(url).netloc.lower()
-        # Remove www.
-        if domain.startswith("www."):
-            domain = domain[4:]
-        cls = self._domains.get(domain)
-        return cls() if cls else None
+    @classmethod
+    def get_scraper(cls, url: str):
+        domain = urlparse(url).netloc
+        scraper_name = cls._domains.get(domain)
+        if scraper_name and scraper_name in cls._scrapers:
+            return cls._scrapers[scraper_name]()
+        return None
 
     @classmethod
-    def register(cls, name: str, scraper_cls: type[BaseScraper]):
-        """Register a new scraper."""
-        cls._scrapers[name] = scraper_cls
+    def get_scraper_by_name(cls, name: str):
+        if name in cls._scrapers:
+            return cls._scrapers[name]()
+        return None

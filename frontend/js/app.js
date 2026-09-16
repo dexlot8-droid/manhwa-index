@@ -56,7 +56,6 @@ function renderSeries(seriesList) {
         var title = escapeHtml(s.title);
         var chCount = s.chapter_count || 0;
         
-        // Use slug for detail link
         html += '<a href="/series.html?slug=' + encodeURIComponent(s.slug) + '" class="series-card">';
         html += '<img src="' + cover + '" alt="' + title + '" loading="lazy" onerror="this.src=\'/img/placeholder.svg\'">';
         html += '<div class="info">';
