@@ -35,8 +35,8 @@ jobs:
           name: manhwa-data
           path: data/manhwa.json
 
-      - name: Release
-        if: github.event_name == 'workflow_dispatch' || github.run_number % 4 == 0
+      - name: Create Release
+        if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: manhwa-latest
