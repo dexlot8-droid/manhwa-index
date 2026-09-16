@@ -1,76 +1,109 @@
 /**
- * Main app logic — Browse and search series on the homepage.
+ * Manhwa Index — Single Page App with hash routing.
+ * Routes: #/ (home), #/series/:slug (detail), #/chapter/:slug/:ch (reader)
  */
 
 let allSeries = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await loadStats();
-    await loadSeries();
-    
-    const searchInput = document.getElementById('searchInput');
-    searchInput.addEventListener('input', (e) => {
-        filterSeries(e.target.value);
-    });
+    // Handle hash routing
+    window.addEventListener('hashchange', render);
+    await loadAllSeries();
+    render();
 });
 
-async function loadStats() {
+async function loadAllSeries() {
     const data = await getAllSeries();
     if (data && data.series) {
-        const total = data.series.length;
-        const totalChapters = data.series.reduce(function(sum, s) { return sum + (s.chapter_count || 0); }, 0);
-        document.getElementById('stats').innerHTML = 
-            '<strong>' + total + '</strong> series indexed &bull; ' +
-            '<strong>' + totalChapters + '</strong> chapters &bull; ' +
-            '<strong>' + (totalChapters * 30).toLocaleString() + '+</strong> pages';
+        allSeries = data.series;
     }
 }
 
-async function loadSeries() {
-    const data = await getAllSeries();
-    const loading = document.getElementById('loading');
-    const grid = document.getElementById('series-grid');
+function render() {
+    const hash = window.location.hash || '#/';
+    const app = document.getElementById('app');
     
-    if (!data || !data.series || data.series.length === 0) {
-        loading.textContent = 'No series indexed yet.';
-        return;
+    if (hash.startsWith('#/series/')) {
+        const slug = hash.replace('#/series/', '');
+        renderSeriesDetail(app, slug);
+    } else if (hash.startsWith('#/chapter/')) {
+        const parts = hash.replace('#/chapter/', '').split('/');
+        const slug = parts[0];
+        const ch = parseInt(parts[1] || '1');
+        renderChapter(app, slug, ch);
+    } else {
+        renderHome(app);
     }
-    
-    loading.style.display = 'none';
-    allSeries = data.series;
-    
-    // Fetch real cover URLs from individual series endpoints
-    for (var i = 0; i < allSeries.length; i++) {
-        var s = allSeries[i];
-        if (!s.cover_url || s.cover_url.indexOf('abyssrift.com') === -1) {
-            try {
-                var detail = await getSeries(s.slug);
-                if (detail && detail.cover_url && detail.cover_url.indexOf('abyssrift.com') !== -1) {
-                    s.cover_url = detail.cover_url;
-                }
-            } catch(e) {}
-        }
-    }
-    
-    renderSeries(allSeries);
 }
 
-function renderSeries(seriesList) {
-    const grid = document.getElementById('series-grid');
+function renderHome(app) {
+    const total = allSeries.length;
+    const totalChapters = allSeries.reduce((sum, s) => sum + (s.chapter_count || 0), 0);
     
-    if (seriesList.length === 0) {
-        grid.innerHTML = '<p style="color:#666;grid-column:1/-1">No matches found.</p>';
-        return;
+    let html = '<div class="stats">';
+    html += '<strong>' + total + '</strong> series &bull; ';
+    html += '<strong>' + totalChapters + '</strong> chapters &bull; ';
+    html += '<strong>' + (totalChapters * 30).toLocaleString() + '+</strong> pages';
+    html += '</div>';
+    
+    html += '<div id="search"><input type="text" id="searchInput" placeholder="Search series..."></div>';
+    html += '<div id="series-grid" class="grid">';
+    
+    if (allSeries.length === 0) {
+        html += '<p style="color:#666">Loading series...</p>';
     }
     
-    var html = '';
-    for (var i = 0; i < seriesList.length; i++) {
-        var s = seriesList[i];
-        var cover = s.cover_url || '/img/placeholder.svg';
-        var title = escapeHtml(s.title);
-        var chCount = s.chapter_count || 0;
+    for (let i = 0; i < allSeries.length; i++) {
+        const s = allSeries[i];
+        const cover = s.cover_url || '/img/placeholder.svg';
+        const title = escapeHtml(s.title);
+        const chCount = s.chapter_count || 0;
         
-        html += '<a href="/series.html?slug=' + encodeURIComponent(s.slug) + '" class="series-card">';
+        html += '<a href="#/series/' + encodeURIComponent(s.slug) + '" class="series-card">';
+        html += '<img src="' + cover + '" alt="' + title + '" loading="lazy" onerror="this.src=\'/img/placeholder.svg\'">';
+        html += '<div class="info">';
+        html += '<div class="title">' + title + '</div>';
+        html += '<div class="meta">' + chCount + ' ch</div>';
+        html += '</div></a>';
+    }
+    
+    html += '</div>';
+    app.innerHTML = html;
+    
+    // Attach search handler
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            filterSeries(e.target.value);
+        });
+    }
+}
+
+function filterSeries(query) {
+    const q = query.toLowerCase().trim();
+    if (!q) {
+        renderHome(document.getElementById('app'));
+        return;
+    }
+    
+    const filtered = allSeries.filter(s => {
+        const titleMatch = s.title.toLowerCase().indexOf(q) !== -1;
+        const tagMatch = (s.tags || []).some(t => t.indexOf(q) !== -1);
+        return titleMatch || tagMatch;
+    });
+    
+    const app = document.getElementById('app');
+    const grid = app.querySelector('#series-grid');
+    if (!grid) return;
+    
+    let html = '';
+    for (let i = 0; i < filtered.length; i++) {
+        const s = filtered[i];
+        const cover = s.cover_url || '/img/placeholder.svg';
+        const title = escapeHtml(s.title);
+        const chCount = s.chapter_count || 0;
+        
+        html += '<a href="#/series/' + encodeURIComponent(s.slug) + '" class="series-card">';
         html += '<img src="' + cover + '" alt="' + title + '" loading="lazy" onerror="this.src=\'/img/placeholder.svg\'">';
         html += '<div class="info">';
         html += '<div class="title">' + title + '</div>';
@@ -80,24 +113,121 @@ function renderSeries(seriesList) {
     grid.innerHTML = html;
 }
 
-function filterSeries(query) {
-    var q = query.toLowerCase().trim();
-    if (!q) {
-        renderSeries(allSeries);
+async function renderSeriesDetail(app, slug) {
+    const data = await getSeries(slug);
+    
+    if (!data) {
+        app.innerHTML = '<p style="color:#666">Series not found.</p>';
         return;
     }
     
-    var filtered = allSeries.filter(function(s) { 
-        var titleMatch = s.title.toLowerCase().indexOf(q) !== -1;
-        var tagMatch = (s.tags || []).some(function(t) { return t.indexOf(q) !== -1; });
-        return titleMatch || tagMatch;
-    });
-    renderSeries(filtered);
+    const cover = data.cover_url || '/img/placeholder.svg';
+    const title = escapeHtml(data.title);
+    const chCount = data.chapter_count || 0;
+    
+    let html = '<div class="series-detail">';
+    html += '<div class="cover"><img src="' + cover + '" alt="' + title + '" onerror="this.src=\'/img/placeholder.svg\'"></div>';
+    html += '<div class="info">';
+    html += '<h2>' + title + '</h2>';
+    html += '<div class="meta"><span>Author: ' + escapeHtml(data.author || 'Unknown') + '</span><span>Status: ' + data.status + '</span></div>';
+    html += '<div class="tags">' + (data.tags || []).map(t => '<span>#' + escapeHtml(t) + '</span>').join('') + '</div>';
+    html += '<p class="description">' + escapeHtml(data.description || 'No description.') + '</p>';
+    html += '<p style="color:#888;font-size:0.85rem;margin-top:10px">' + chCount + ' chapters</p>';
+    html += '</div></div>';
+    
+    // Chapter list
+    html += '<h3>Chapters</h3><div class="chapter-list">';
+    const chapters = data.chapters || [];
+    if (chapters.length === 0) {
+        // Generate chapter links from chapter_count
+        for (let i = 1; i <= Math.min(chCount, 50); i++) {
+            html += '<a href="#/chapter/' + encodeURIComponent(slug) + '/' + i + '" class="chapter-item">';
+            html += '<span class="number">Ch. ' + i + '</span>';
+            html += '<span class="title">Chapter ' + i + '</span>';
+            html += '</a>';
+        }
+    } else {
+        for (let i = 0; i < Math.min(chapters.length, 50); i++) {
+            const ch = chapters[i];
+            html += '<a href="#/chapter/' + encodeURIComponent(slug) + '/' + ch.chapter_number + '" class="chapter-item">';
+            html += '<span class="number">Ch. ' + ch.chapter_number + '</span>';
+            html += '<span class="title">' + escapeHtml(ch.title) + '</span>';
+            html += '</a>';
+        }
+    }
+    html += '</div>';
+    
+    app.innerHTML = html;
+    document.title = title + ' - Manhwa Index';
+}
+
+async function renderChapter(app, slug, chNum) {
+    const data = await getSeries(slug);
+    
+    if (!data) {
+        app.innerHTML = '<p style="color:#666">Chapter not found.</p>';
+        return;
+    }
+    
+    const title = data.title || slug;
+    const chapters = data.chapters || [];
+    let chapter = null;
+    
+    // Find the chapter
+    for (let i = 0; i < chapters.length; i++) {
+        if (chapters[i].chapter_number == chNum) {
+            chapter = chapters[i];
+            break;
+        }
+    }
+    
+    // If no chapter data, generate placeholder
+    if (!chapter) {
+        chapter = {
+            chapter_number: chNum,
+            title: 'Chapter ' + chNum,
+            image_urls: []
+        };
+    }
+    
+    let html = '<div class="chapter-reader">';
+    html += '<h1>' + escapeHtml(title) + ' - ' + escapeHtml(chapter.title) + '</h1>';
+    
+    // Navigation
+    html += '<div class="chapter-nav">';
+    html += '<a href="#/chapter/' + encodeURIComponent(slug) + '/' + (chNum - 1) + '">← Previous</a>';
+    html += '<a href="#/series/' + encodeURIComponent(slug) + '">Series</a>';
+    html += '<a href="#/chapter/' + encodeURIComponent(slug) + '/' + (chNum + 1) + '">Next →</a>';
+    html += '</div>';
+    
+    // Images
+    html += '<div id="chapter-images">';
+    const images = chapter.image_urls || [];
+    if (images.length === 0) {
+        html += '<p style="color:#666;text-align:center;padding:40px">No images available for this chapter.</p>';
+    } else {
+        for (let i = 0; i < images.length; i++) {
+            html += '<img src="' + images[i] + '" alt="Page ' + (i + 1) + '" loading="lazy" onerror="this.style.display=\'none\'">';
+        }
+    }
+    html += '</div>';
+    
+    // Bottom navigation
+    html += '<div class="chapter-nav" style="margin-top:20px">';
+    html += '<a href="#/chapter/' + encodeURIComponent(slug) + '/' + (chNum - 1) + '">← Previous</a>';
+    html += '<a href="#/series/' + encodeURIComponent(slug) + '">Series</a>';
+    html += '<a href="#/chapter/' + encodeURIComponent(slug) + '/' + (chNum + 1) + '">Next →</a>';
+    html += '</div>';
+    
+    html += '</div>';
+    
+    app.innerHTML = html;
+    document.title = title + ' Ch. ' + chNum + ' - Manhwa Index';
 }
 
 function escapeHtml(text) {
     if (!text) return '';
-    var div = document.createElement('div');
+    const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
