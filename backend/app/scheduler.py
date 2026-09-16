@@ -19,29 +19,23 @@ logger = logging.getLogger(__name__)
 async def scrape_series(series: Series) -> dict:
     """Scrape a single series using MangaDex."""
     scraper = MangaDexScraper()
-
     try:
-        # Search for the series on MangaDex
         results = await scraper.search_series(series.title)
         if not results:
             return {"success": False, "error": "Series not found on MangaDex"}
 
         manga = results[0]
         manga_id = manga["id"]
-
-        # Get chapters
         chapters_data = await scraper.get_chapters(f"https://mangadex.org/title/{manga_id}")
 
         if not chapters_data:
             return {"success": False, "error": "No chapters found"}
 
-        # Get images for each chapter (limit to first 20 for speed)
         for ch in chapters_data[:20]:
             ch_id = ch["source_url"].split("/")[-1]
             images = await scraper.get_chapter_images(ch_id)
             ch["image_urls"] = images
 
-        # Update series metadata
         series.title = manga["title"]
         series.cover_url = manga["cover_url"]
         series.description = manga["description"]
@@ -49,7 +43,6 @@ async def scrape_series(series: Series) -> dict:
         series.tags = manga.get("tags", [])
         series.status = manga["status"]
 
-        # Track existing chapters
         existing_chapters = {}
         for ch in series.chapters:
             if ch.is_active:
@@ -123,7 +116,7 @@ async def run_scrape_job() -> dict:
         for series in series_list:
             try:
                 scrape_result = await scrape_series(series)
-                if scrape_result["success"]:
+                if scrape_result.get("success"):
                     stats["scraped"] += 1
                     stats["new_chapters"] += scrape_result.get("new_chapters", 0)
                     await session.commit()
@@ -142,7 +135,6 @@ async def add_series(source_url: str) -> dict:
     """Add a new series to the database."""
     scraper = MangaDexScraper()
     try:
-        # Search for the series
         results = await scraper.search_series(source_url)
         if not results:
             return {"success": False, "error": "Series not found on MangaDex"}
@@ -150,7 +142,6 @@ async def add_series(source_url: str) -> dict:
         manga = results[0]
         manga_id = manga["id"]
 
-        # Check if already exists
         async with async_session() as session:
             result = await session.execute(
                 select(Series).where(Series.source_id == manga_id)
@@ -159,7 +150,6 @@ async def add_series(source_url: str) -> dict:
             if existing:
                 return {"success": False, "error": "Series already exists", "series_id": existing.id}
 
-            # Create new series
             new_series = Series(
                 slug=manga["title"].lower().replace(" ", "-"),
                 title=manga["title"],
@@ -176,9 +166,8 @@ async def add_series(source_url: str) -> dict:
             await session.commit()
             await session.refresh(new_series)
 
-            # Scrape it
             scrape_result = await scrape_series(new_series)
-            if scrape_result["success"]:
+            if scrape_result.get("success"):
                 await session.commit()
                 await sync_series_to_kv(new_series)
                 return {
