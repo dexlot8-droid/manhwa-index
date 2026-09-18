@@ -2,29 +2,60 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manhwa Index</title>
-    <link rel="stylesheet" href="/css/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Manhwa Index - Premium Webtoon Reader</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
 </head>
 <body>
+    <!-- Top Reading Progress Bar (Active in Reader) -->
+    <div class="reading-progress-bar" id="readingProgressBar"></div>
+
+    <!-- Navigation Header -->
     <header>
         <div class="container">
-            <h1><a href="#/" id="logo">Manhwa Index</a></h1>
-            <p class="subtitle">Browse hotlinked manhwa chapters</p>
+            <a href="/" class="logo">
+                <div class="logo-icon">📖</div>
+                <div class="logo-text">Manhwa<span>Index</span></div>
+            </a>
+            <div class="header-actions">
+                <div class="header-stats">
+                    <span><strong>9</strong> Series</span>
+                    <span>•</span>
+                    <span><strong>400+</strong> Chapters</span>
+                </div>
+            </div>
         </div>
     </header>
 
+    <!-- Main Content App Mount -->
     <main class="container" id="app">
-        <!-- Dynamic content -->
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <p>Loading library...</p>
+        </div>
     </main>
 
+    <!-- Footer -->
     <footer>
         <div class="container">
-            <p>Images hotlinked from original sources. No images hosted here.</p>
+            <p>Images hotlinked directly from content providers. No media files are hosted on this server.</p>
+            <p style="margin-top: 10px; font-size: 0.8rem;">
+                <a href="/">Manhwa Index</a> • Fast, Minimalist, Free Webtoon Reader
+            </p>
         </div>
     </footer>
 
-    <script src="/js/api.js"></script>
-    <script src="/js/app.js"></script>
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
