@@ -10,6 +10,11 @@ async function handleRequest(event) {
     if (path === 'proxy/image') {
         return proxyImage(url.searchParams.get('url'));
     }
+
+    // NEW: Write endpoint using Worker KV binding (bypasses REST API rate limits)
+    if (path === 'sync' && request.method === 'POST') {
+        return handleSync(request);
+    }
     
     const key = path;
     if (!key || key === 'index.html') {
@@ -36,6 +41,55 @@ async function handleRequest(event) {
             JSON.stringify({ error: "Internal error", message: err.message }),
             { status: 500, headers: { "Content-Type": "application/json" } }
         );
+    }
+}
+
+// Worker KV binding sync endpoint — bypasses REST API rate limits
+async function handleSync(request) {
+    try {
+        const body = await request.json();
+        const chapters = body.chapters || [];
+        const all_series = body.all_series || null;
+        const batch_size = body.batch_size || 100;
+        
+        let synced = 0;
+        let errors = 0;
+        
+        // Write chapters in batches of 100 (each batch = 1 KV operation)
+        for (let i = 0; i < chapters.length; i += batch_size) {
+            const batch = chapters.slice(i, i + batch_size);
+            await Promise.all(batch.map(ch => 
+                MANHWA_KV.put(`chapter:${ch.id}`, JSON.stringify(ch))
+                    .then(() => synced++)
+                    .catch(e => { errors++; console.error(e); })
+            ));
+        }
+        
+        // Write all_series metadata
+        if (all_series) {
+            await MANHWA_KV.put('all_series', JSON.stringify(all_series));
+        }
+        
+        return new Response(JSON.stringify({
+            success: true,
+            synced,
+            errors,
+            total: chapters.length,
+            batches: Math.ceil(chapters.length / batch_size)
+        }), {
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+            }
+        });
+    } catch (err) {
+        return new Response(JSON.stringify({
+            success: false,
+            error: err.message
+        }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" }
+        });
     }
 }
 

@@ -33,6 +33,7 @@ class Series(Base):
     chapter_count = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     last_scraped = Column(DateTime)
+    last_kv_sync = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
