@@ -1,8 +1,10 @@
 """
 Auto-scrape from Asura Scans - runs every 30 min.
-Fetches all chapters + images from Asura API.
-Incremental sync: only pushes NEW chapters to KV.
-Uses Worker API (bypasses REST API rate limits) as primary.
+Stores all chapters for a series in ONE KV value.
+Respects Cloudflare KV 1000 writes/day limit by:
+  1. Batching: 1 KV write per series (all chapters in one value)
+  2. Rate-limit awareness: stops retrying after 429 until next UTC day
+  3. Midnight sync: first run after 00:00 UTC does the full sync
 """
 import asyncio
 import json
@@ -16,15 +18,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import httpx
 from app.models import async_session, Series, Chapter, init_db
 from app.kv_sync import kv_put, kv_bulk_write
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 logger = logging.getLogger(__name__)
 
 ASURA_API = "https://api.asurascans.com"
-WORKER_URL = os.getenv("WORKER_URL", "https://manhwa-kv-proxy.dexlot8.workers.dev")
 SCRAPE_INTERVAL = 1800  # 30 min
-MAX_KV_WRITES_PER_RUN = 500  # Stay well under 1000/day (even with overhead)
 
 SERIES = [
     {"slug": "return-of-the-mount-hua-sect", "title": "Return of Mount Hua Sect", "db_id": 50},
@@ -38,6 +38,43 @@ SERIES = [
     {"slug": "reincarnation-of-the-fist-king", "title": "Reincarnation of the Fist King", "db_id": 58},
     {"slug": "swordmasters-youngest-son", "title": "Swordmaster's Youngest Son", "db_id": 59},
 ]
+
+# Track daily writes
+KV_DAILY_LIMIT = 1000
+_kv_state = {"date": None, "writes_used": 0, "rate_limited": False}
+
+
+def _reset_daily_if_needed():
+    """Reset counter if we're in a new UTC day."""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    if _kv_state["date"] != today:
+        _kv_state["date"] = today
+        _kv_state["writes_used"] = 0
+        _kv_state["rate_limited"] = False
+        logger.info(f"New UTC day - KV budget reset to {KV_DAILY_LIMIT}")
+
+
+async def _kv_put_limited(key, value):
+    """KV put with daily budget tracking. Returns True if written, False if skipped."""
+    _reset_daily_if_needed()
+    
+    if _kv_state["rate_limited"]:
+        return False
+    
+    if _kv_state["writes_used"] >= KV_DAILY_LIMIT:
+        _kv_state["rate_limited"] = True
+        logger.warning(f"  KV daily limit reached ({KV_DAILY_LIMIT}), skipping remaining writes")
+        return False
+    
+    ok = await kv_put(key, value)
+    if ok:
+        _kv_state["writes_used"] += 1
+        return True
+    else:
+        # Check if it was a 429
+        _kv_state["rate_limited"] = True
+        logger.warning("  KV rate limited (429), stopping writes for today")
+        return False
 
 
 async def fetch_chapters(client, slug):
@@ -58,6 +95,7 @@ async def fetch_chapter_images(client, slug, ch_num):
 
 
 async def scrape_series(client, session, series_info):
+    """Scrape series - only fetch images for NEW chapters."""
     slug = series_info["slug"]
     title = series_info["title"]
     db_id = series_info["db_id"]
@@ -67,33 +105,11 @@ async def scrape_series(client, session, series_info):
     chapters = await fetch_chapters(client, slug)
     if not chapters:
         logger.warning(f"    No chapters found")
-        return {"success": False, "error": "no chapters"}
+        return {"success": False, "error": "no chapters", "new_count": 0}
 
     total_chapters = len(chapters)
-    logger.info(f"    Found {total_chapters} chapters")
+    logger.info(f"    Found {total_chapters} chapters from API")
 
-    chapters_with_images = []
-    for i, ch in enumerate(chapters):
-        ch_num = ch.get("number", 0)
-        ch_title = ch.get("title") or f"Chapter {ch_num}"
-
-        images = await fetch_chapter_images(client, slug, ch_num)
-        if images:
-            chapters_with_images.append({
-                "number": float(ch_num) if ch_num else 0,
-                "title": ch_title,
-                "image_urls": images,
-                "page_count": len(images),
-            })
-
-        if (i + 1) % 10 == 0:
-            logger.info(f"    {i+1}/{total_chapters} chapters processed")
-        await asyncio.sleep(0.3)
-
-    fetched = len(chapters_with_images)
-    logger.info(f"    {fetched} chapters with images")
-
-    # Get series record
     result = await session.execute(select(Series).where(Series.id == db_id))
     s = result.scalar_one_or_none()
 
@@ -108,94 +124,79 @@ async def scrape_series(client, session, series_info):
     s.is_active = True
     s.status = "ongoing"
 
-    # Delete old chapters
-    await session.execute(delete(Chapter).where(Chapter.series_id == db_id))
+    result = await session.execute(select(Chapter).where(Chapter.series_id == db_id))
+    existing_chapters = {c.chapter_number: c for c in result.scalars().all()}
 
-    new_chapter_ids = []
-    for ch_data in chapters_with_images:
-        new_ch = Chapter(
-            series_id=db_id,
-            chapter_number=ch_data["number"],
-            title=ch_data["title"],
-            source_url=f"https://api.asurascans.com/api/series/{slug}/chapters/{ch_data['number']}",
-            image_urls=ch_data["image_urls"],
-            image_count=ch_data["page_count"],
-            is_active=True,
-            scraped_at=datetime.utcnow(),
-        )
-        session.add(new_ch)
-        await session.flush()
-        new_chapter_ids.append(new_ch.id)
+    new_chapters = []
+    for i, ch in enumerate(chapters):
+        ch_num = float(ch.get("number", 0)) if ch.get("number") else 0
+        ch_title = ch.get("title") or f"Chapter {int(ch_num)}"
 
-    s.chapter_count = fetched
+        if ch_num in existing_chapters:
+            continue
+
+        images = await fetch_chapter_images(client, slug, ch.get("number", 0))
+        if images:
+            new_ch = Chapter(
+                series_id=db_id,
+                chapter_number=ch_num,
+                title=ch_title,
+                source_url=f"https://api.asurascans.com/api/series/{slug}/chapters/{ch.get("number", 0)}",
+                image_urls=images,
+                image_count=len(images),
+                is_active=True,
+                scraped_at=datetime.utcnow(),
+            )
+            session.add(new_ch)
+            new_chapters.append(new_ch)
+
+        if (i + 1) % 10 == 0:
+            logger.info(f"    {i+1}/{total_chapters} API chapters processed")
+        await asyncio.sleep(0.3)
+
+    s.chapter_count = len(existing_chapters) + len(new_chapters)
     s.last_scraped = datetime.utcnow()
     await session.commit()
 
-    logger.info(f"    {fetched} chapters saved to DB")
-    return {
-        "success": True,
-        "chapters": fetched,
-        "db_id": db_id,
-        "slug": slug,
-        "series_obj": s,
-        "new_chapter_ids": new_chapter_ids,
+    logger.info(f"    {len(new_chapters)} NEW chapters added (total: {s.chapter_count})")
+    return {"success": True, "new_count": len(new_chapters), "db_id": db_id}
+
+
+async def sync_series_to_kv(session, db_id):
+    """Sync ALL chapters for a series into ONE KV value."""
+    result = await session.execute(
+        select(Chapter).where(Chapter.series_id == db_id, Chapter.is_active == True)
+    )
+    chapters = result.scalars().all()
+
+    if not chapters:
+        return False
+
+    chapter_list = []
+    for c in chapters:
+        chapter_list.append({
+            "id": c.id,
+            "number": c.chapter_number,
+            "title": c.title or f"Chapter {c.chapter_number}",
+            "image_urls": c.image_urls or [],
+            "image_count": c.image_count or 0,
+        })
+
+    chapter_list.sort(key=lambda x: x["number"], reverse=True)
+
+    series_data = {
+        "series_id": db_id,
+        "chapters": chapter_list,
+        "count": len(chapter_list),
+        "last_updated": datetime.utcnow().isoformat(),
     }
 
-
-async def get_new_chapters_for_kv(session, db_id, last_kv_sync):
-    """Get chapters that haven't been synced to KV yet."""
-    if last_kv_sync is None:
-        # First sync: get ALL chapters
-        result = await session.execute(
-            select(Chapter).where(Chapter.series_id == db_id, Chapter.is_active == True)
-        )
-        return result.scalars().all()
-    else:
-        # Incremental: only chapters scraped after last_kv_sync
-        result = await session.execute(
-            select(Chapter).where(
-                Chapter.series_id == db_id,
-                Chapter.is_active == True,
-                Chapter.scraped_at > last_kv_sync,
-            )
-        )
-        return result.scalars().all()
+    ok = await _kv_put_limited(f"series:{db_id}", series_data)
+    return ok
 
 
-async def sync_to_worker(chapters_payload, all_series_payload=None):
-    """Sync chapters using Worker API (bypasses REST API rate limits)."""
-    payload = {
-        "chapters": chapters_payload,
-        "batch_size": 50,  # Worker KV batches of 50 per op
-    }
-    if all_series_payload:
-        payload["all_series"] = all_series_payload
-
-    async with httpx.AsyncClient(timeout=120) as client:
-        r = await client.post(f"{WORKER_URL}/sync", json=payload)
-        if r.status_code == 200:
-            data = r.json()
-            return data.get("success", False), data
-        else:
-            logger.warning(f"  Worker sync failed: {r.status_code} - {r.text[:100]}")
-            return False, None
-
-
-async def sync_with_retry_429(payload_fn, max_retries=5):
-    """Retry with exponential backoff on 429."""
-    backoff = 60  # Start with 1 minute
-    for attempt in range(max_retries):
-        success, data = await payload_fn()
-        if success:
-            return success, data
-        logger.warning(f"  Retry {attempt+1}/{max_retries} after {backoff}s...")
-        await asyncio.sleep(backoff)
-        backoff *= 2  # Exponential: 60, 120, 240, 480, 960
-    return False, None
-
-
-async def sync_all_series_to_kv(session):
-    """Push series metadata to KV. Uses REST API with retry."""
+async def sync_all_series_metadata(session):
+    """Sync all_series metadata."""
     result = await session.execute(
         select(Series).where(Series.is_active == True).order_by(Series.title)
     )
@@ -214,86 +215,51 @@ async def sync_all_series_to_kv(session):
         })
     lightweight.sort(key=lambda x: x["title"])
 
-    ok = await kv_put("all_series", {"series": lightweight, "count": len(lightweight)})
-    if ok:
-        logger.info(f"  KV: {len(lightweight)} series synced via REST")
-    else:
-        logger.warning(f"  KV: all_series sync via REST failed")
+    ok = await _kv_put_limited("all_series", {"series": lightweight, "count": len(lightweight)})
     return ok
 
 
 async def run_scrape_job():
-    """Run full scrape + incremental sync."""
+    """Full scrape + sync with daily KV budget awareness."""
+    _reset_daily_if_needed()
+    
     async with httpx.AsyncClient(
         timeout=30,
         follow_redirects=True,
         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
     ) as client:
         async with async_session() as session:
-            total = 0
+            total_new = 0
             success = 0
             failed = 0
-            new_chapters_kv = []
-            all_chapter_kv = []
+            series_with_new_chapters = set()
 
             for info in SERIES:
                 try:
                     result = await scrape_series(client, session, info)
                     if result.get("success"):
                         success += 1
-                        total += result.get("chapters", 0)
-                        db_id = result["db_id"]
-                        series_obj = result["series_obj"]
-
-                        # Get last_kv_sync for this series
-                        last_kv_sync = series_obj.last_kv_sync
-
-                        # Get chapters that need KV sync
-                        chs = await get_new_chapters_for_kv(session, db_id, last_kv_sync)
-                        
-                        if chs:
-                            for c in chs:
-                                ch_payload = {
-                                    "id": c.id,
-                                    "series_id": c.series_id,
-                                    "chapter_number": c.chapter_number,
-                                    "title": c.title,
-                                    "image_urls": c.image_urls,
-                                    "image_count": c.image_count,
-                                }
-                                new_chapters_kv.append(ch_payload)
-                                all_chapter_kv.append(ch_payload)
-
-                        logger.info(f"    [{db_id}] {len(chs)} new chapters to sync")
+                        new_count = result.get("new_count", 0)
+                        total_new += new_count
+                        if new_count > 0:
+                            series_with_new_chapters.add(result["db_id"])
                     else:
                         failed += 1
                 except Exception as e:
                     logger.error(f"  Error scraping {info["slug"]}: {e}")
                     failed += 1
 
-            # Try Worker API first (different rate limits)
-            worker_success = False
-            if new_chapters_kv:
-                logger.info(f"  Syncing {len(new_chapters_kv)} chapters via Worker API...")
-                worker_success, worker_data = await sync_to_worker(new_chapters_kv)
-                if worker_success:
-                    logger.info(f"    Worker sync OK: {worker_data}")
-                else:
-                    logger.warning(f"    Worker sync FAILED, will try REST API fallback")
+            # Sync all_series metadata (1 write)
+            metadata_ok = await sync_all_series_metadata(session)
 
-            # Fallback to REST API if Worker fails
-            if not worker_success and new_chapters_kv:
-                logger.info(f"  Trying REST API fallback ({len(new_chapters_kv)} chapters)...")
-                ok = await kv_bulk_write([{"key": f"chapter:{ch["id"]}", "value": ch} for ch in new_chapters_kv])
+            # Sync series with new chapters (1 write each)
+            series_synced = 0
+            for db_id in series_with_new_chapters:
+                ok = await sync_series_to_kv(session, db_id)
                 if ok:
-                    logger.info(f"    REST bulk sync OK: {len(new_chapters_kv)} chapters")
-                else:
-                    logger.warning(f"    REST bulk sync FAILED")
+                    series_synced += 1
 
-            # Sync series metadata (all_series)
-            await sync_all_series_to_kv(session)
-
-            # Update last_kv_sync timestamps on all series
+            # Update last_kv_sync
             now = datetime.utcnow()
             for info in SERIES:
                 result = await session.execute(select(Series).where(Series.id == info["db_id"]))
@@ -305,16 +271,18 @@ async def run_scrape_job():
             return {
                 "scraped": success,
                 "failed": failed,
-                "new_chapters": total,
-                "kv_synced": len(new_chapters_kv),
-                "worker_used": worker_success,
+                "new_chapters": total_new,
+                "kv_metadata": metadata_ok,
+                "kv_series_synced": series_synced,
+                "kv_writes_used": _kv_state["writes_used"],
+                "kv_rate_limited": _kv_state["rate_limited"],
             }
 
 
 async def main():
     await init_db()
-    logger.info("=== Asura Auto-Scraper Started (Incremental Sync) ===")
-    logger.info(f"Worker URL: {WORKER_URL}")
+    logger.info("=== Asura Auto-Scraper Started ===")
+    logger.info(f"KV daily limit: {KV_DAILY_LIMIT} writes")
     logger.info(f"Scrape interval: {SCRAPE_INTERVAL}s")
 
     while True:

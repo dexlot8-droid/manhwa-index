@@ -1,31 +1,23 @@
 /**
  * API client & State Storage for Manhwa Index frontend.
  * Talks to Cloudflare Worker proxy reading from Cloudflare KV.
+ * Uses bundled series format: all chapters inside series:X value.
  */
 
-// Universal API Base resolution:
-// 1. Explicit window override if specified
-// 2. Relative if hosted directly on workers.dev
-// 3. Defaults to the live worker proxy for all other domains, pages.dev, localhost, and file://
-const API_BASE = (typeof window !== 'undefined' && window.MANHWA_API_BASE)
+const API_BASE = (typeof window !== "undefined" && window.MANHWA_API_BASE)
     ? window.MANHWA_API_BASE
-    : (self.location.hostname.includes('workers.dev') ? '' : 'https://manhwa-kv-proxy.dexlot8.workers.dev');
+    : (self.location.hostname.includes("workers.dev") ? "" : "https://manhwa-kv-proxy.dexlot8.workers.dev");
 
-// In-memory cache to eliminate redundant network roundtrips
+// In-memory cache
 const memoryCache = {
     allSeries: null,
     series: new Map(),
-    chapters: new Map(),
     pendingRequests: new Map()
 };
 
-/**
- * Robust JSON fetcher with request deduplication
- */
 async function fetchJSON(endpoint) {
     const url = API_BASE + endpoint;
     
-    // Deduplicate in-flight promises
     if (memoryCache.pendingRequests.has(url)) {
         return memoryCache.pendingRequests.get(url);
     }
@@ -33,16 +25,16 @@ async function fetchJSON(endpoint) {
     const fetchPromise = (async () => {
         try {
             const res = await fetch(url, {
-                headers: { 'Accept': 'application/json' },
-                mode: 'cors'
+                headers: { "Accept": "application/json" },
+                mode: "cors"
             });
             if (!res.ok) {
-                console.warn(`[API] HTTP ${res.status} for ${endpoint}`);
+                console.warn("[API] HTTP " + res.status + " for " + endpoint);
                 return null;
             }
             return await res.json();
         } catch (err) {
-            console.error(`[API] Fetch failed for ${endpoint}:`, err);
+            console.error("[API] Fetch failed for " + endpoint + ":", err);
             return null;
         } finally {
             memoryCache.pendingRequests.delete(url);
@@ -59,7 +51,7 @@ async function getAllSeries(forceRefresh = false) {
     if (!forceRefresh && memoryCache.allSeries) {
         return memoryCache.allSeries;
     }
-    const data = await fetchJSON('/all_series');
+    const data = await fetchJSON("/all_series");
     if (data && data.series) {
         memoryCache.allSeries = data;
     }
@@ -70,9 +62,9 @@ async function getSeries(slug, forceRefresh = false) {
     if (!forceRefresh && memoryCache.series.has(slug)) {
         return memoryCache.series.get(slug);
     }
-    const data = await fetchJSON('/series:' + encodeURIComponent(slug));
+    const data = await fetchJSON("/series:" + encodeURIComponent(slug));
     if (data && data.title) {
-        // Normalize chapters list sorting (ascending by chapter number)
+        // Sort chapters ascending by number
         if (Array.isArray(data.chapters)) {
             data.chapters.sort((a, b) => {
                 const numA = parseFloat(a.number) || 0;
@@ -85,36 +77,43 @@ async function getSeries(slug, forceRefresh = false) {
     return data;
 }
 
-async function getChapterList(seriesId) {
-    return await fetchJSON('/chapters:' + seriesId);
+async function getChapterBySlugAndNumber(slug, chapterNumber) {
+    // Get bundled series data, find chapter by number
+    const seriesData = await getSeries(slug);
+    if (!seriesData || !Array.isArray(seriesData.chapters)) {
+        return null;
+    }
+    const chNum = parseFloat(chapterNumber);
+    const chapter = seriesData.chapters.find(ch => parseFloat(ch.number) === chNum);
+    return chapter || null;
 }
 
-async function getChapter(chapterId, forceRefresh = false) {
-    const key = String(chapterId);
-    if (!forceRefresh && memoryCache.chapters.has(key)) {
-        return memoryCache.chapters.get(key);
+async function getChapterById(chapterId) {
+    // Search across all cached series for this chapter ID
+    for (const [slug, seriesData] of memoryCache.series.entries()) {
+        if (seriesData.chapters) {
+            const ch = seriesData.chapters.find(c => c.id == chapterId);
+            if (ch) return ch;
+        }
     }
-    const data = await fetchJSON('/chapter:' + encodeURIComponent(key));
-    if (data && data.image_urls) {
-        memoryCache.chapters.set(key, data);
-    }
-    return data;
+    console.warn("Chapter " + chapterId + " not found in cache");
+    return null;
 }
 
 async function getPopular() {
-    return await fetchJSON('/popular');
+    return await fetchJSON("/popular");
 }
 
 // --- Reading History & Bookmarks (LocalStorage) ---
 
-const STORAGE_KEY_HISTORY = 'manhwa_reading_history_v1';
-const STORAGE_KEY_BOOKMARKS = 'manhwa_bookmarks_v1';
-const STORAGE_KEY_SETTINGS = 'manhwa_reader_settings_v1';
+const STORAGE_KEY_HISTORY = "manhwa_reading_history_v1";
+const STORAGE_KEY_BOOKMARKS = "manhwa_bookmarks_v1";
+const STORAGE_KEY_SETTINGS = "manhwa_reader_settings_v1";
 
 const StorageService = {
     getHistory() {
         try {
-            return JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '{}');
+            return JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || "{}");
         } catch {
             return {};
         }
@@ -130,16 +129,16 @@ const StorageService = {
             history[slug] = {
                 slug,
                 lastChapterNum: chNum,
-                lastChapterTitle: chTitle || `Chapter ${chNum}`,
+                lastChapterTitle: chTitle || "Chapter " + chNum,
                 seriesTitle: seriesData ? seriesData.title : (existing.seriesTitle || slug),
-                coverUrl: seriesData ? seriesData.cover_url : (existing.coverUrl || ''),
+                coverUrl: seriesData ? seriesData.cover_url : (existing.coverUrl || ""),
                 updatedAt: Date.now(),
                 readChapters: Array.from(readChapters)
             };
 
             localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
         } catch (e) {
-            console.error('Failed to save reading history', e);
+            console.error("Failed to save reading history", e);
         }
     },
 
@@ -156,7 +155,7 @@ const StorageService = {
 
     getBookmarks() {
         try {
-            return JSON.parse(localStorage.getItem(STORAGE_KEY_BOOKMARKS) || '[]');
+            return JSON.parse(localStorage.getItem(STORAGE_KEY_BOOKMARKS) || "[]");
         } catch {
             return [];
         }
@@ -192,12 +191,12 @@ const StorageService = {
     getSettings() {
         try {
             return Object.assign({
-                readerWidth: '850px', // '650px', '850px', '1100px', '100%'
-                gap: '0px',           // '0px' (seamless webtoon) or '10px'
-                direction: 'vertical'
-            }, JSON.parse(localStorage.getItem(STORAGE_KEY_SETTINGS) || '{}'));
+                readerWidth: "850px",
+                gap: "0px",
+                direction: "vertical"
+            }, JSON.parse(localStorage.getItem(STORAGE_KEY_SETTINGS) || "{}"));
         } catch {
-            return { readerWidth: '850px', gap: '0px', direction: 'vertical' };
+            return { readerWidth: "850px", gap: "0px", direction: "vertical" };
         }
     },
 
@@ -208,7 +207,7 @@ const StorageService = {
             localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(updated));
             return updated;
         } catch (e) {
-            console.error('Failed to save settings', e);
+            console.error("Failed to save settings", e);
         }
     }
 };
