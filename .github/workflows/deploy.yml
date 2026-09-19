@@ -11,14 +11,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Deploy Worker
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           workingDirectory: worker
           command: deploy src/index.js
 
       - name: Deploy Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          command: pages deploy frontend --project-name=manhwa-index
+          command: pages deploy frontend --project-name=manhwa-index --branch=main
