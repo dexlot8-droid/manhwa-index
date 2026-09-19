@@ -11,9 +11,9 @@ async function handleRequest(event) {
         return proxyImage(url.searchParams.get('url'));
     }
 
-    // NEW: Write endpoint using Worker KV binding (bypasses REST API rate limits)
+    // Write endpoint using Worker KV binding (bypasses REST API rate limits)
     if (path === 'sync' && request.method === 'POST') {
-        return handleSync(request);
+        return handleSync(event);
     }
     
     const key = path;
@@ -44,38 +44,51 @@ async function handleRequest(event) {
     }
 }
 
-// Worker KV binding sync endpoint — bypasses REST API rate limits
-async function handleSync(request) {
+async function handleSync(event) {
     try {
-        const body = await request.json();
+        const body = await event.request.json();
         const chapters = body.chapters || [];
         const all_series = body.all_series || null;
-        const batch_size = body.batch_size || 100;
+        const batchSize = 100;  // Smaller batches to avoid timeout
         
         let synced = 0;
         let errors = 0;
+        const errorDetails = [];
         
-        // Write chapters in batches of 100 (each batch = 1 KV operation)
-        for (let i = 0; i < chapters.length; i += batch_size) {
-            const batch = chapters.slice(i, i + batch_size);
-            await Promise.all(batch.map(ch => 
-                MANHWA_KV.put(`chapter:${ch.id}`, JSON.stringify(ch))
-                    .then(() => synced++)
-                    .catch(e => { errors++; console.error(e); })
-            ));
+        for (let i = 0; i < chapters.length; i += batchSize) {
+            const batch = chapters.slice(i, i + batchSize);
+            for (const ch of batch) {
+                try {
+                    await MANHWA_KV.put(`chapter:${ch.id}`, JSON.stringify(ch));
+                    synced++;
+                } catch(e) {
+                    errors++;
+                    if (errorDetails.length < 3) errorDetails.push(e.message || 'unknown');
+                }
+            }
+            // Small delay between batches
+            if (i + batchSize < chapters.length) {
+                await new Promise(r => setTimeout(r, 100));
+            }
         }
         
         // Write all_series metadata
         if (all_series) {
-            await MANHWA_KV.put('all_series', JSON.stringify(all_series));
+            try {
+                await MANHWA_KV.put('all_series', JSON.stringify(all_series));
+            } catch(e) {
+                errors++;
+                errorDetails.push(`all_series: ${e.message}`);
+            }
         }
         
         return new Response(JSON.stringify({
-            success: true,
+            success: errors === 0,
             synced,
             errors,
             total: chapters.length,
-            batches: Math.ceil(chapters.length / batch_size)
+            batches: Math.ceil(chapters.length / batchSize),
+            errorDetails
         }), {
             headers: {
                 "Content-Type": "application/json",
