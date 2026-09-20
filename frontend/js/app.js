@@ -586,8 +586,9 @@ async function renderChapterReader(app, slug, chNum) {
         return;
     }
 
-    const chapterData = await getChapter(chapterObj.id);
-    if (!chapterData || !Array.isArray(chapterData.image_urls) || chapterData.image_urls.length === 0) {
+    const chapterData = chapterObj;
+    const image_urls = Array.isArray(chapterData.images) ? chapterData.images : (chapterData.image_urls || []);
+    if (!image_urls.length) {
         app.innerHTML = `
             <div class="error-message">
                 <h2>Could not load chapter images</h2>
@@ -658,17 +659,17 @@ async function renderChapterReader(app, slug, chNum) {
                 </div>
 
                 <div style="font-size: 0.8rem; color: var(--text-muted);">
-                    ${chapterData.image_urls.length} Pages • Use ◀ ▶ keys
+                    ${image_urls.length} Pages • Use ◀ ▶ keys
                 </div>
             </div>
 
             <!-- Main Canvas: STRICT NO HOVER EFFECTS -->
             <div class="reader-canvas" id="readerCanvas" style="max-width: ${settings.readerWidth}; gap: ${settings.gap};">
-                ${chapterData.image_urls.map((url, i) => `
+                ${image_urls.map((url, i) => `
                     <div class="page-wrapper" id="pageWrap-${i}">
                         <div class="page-skeleton">
                             <div class="loading-spinner" style="width:24px;height:24px;border-width:2px;"></div>
-                            <span>Page ${i + 1} / ${chapterData.image_urls.length}</span>
+                            <span>Page ${i + 1} / ${image_urls.length}</span>
                         </div>
                         <img 
                             src="${url}" 
