@@ -158,15 +158,16 @@ function renderHome(app) {
                 <div class="spotlight-bg" style="background-image: url('${spotlight.cover_url || '/img/placeholder.svg'}');"></div>
                 <div class="spotlight-vignette"></div>
                 <div class="spotlight-content">
+                    <div class="spotlight-pill">🔥 #1 Featured Manhwa</div>
                     <h1 class="spotlight-title">${escapeHtml(spotlight.title)}</h1>
                     <div class="spotlight-meta">
-                        <span>📖 <strong>${spotlight.chapter_count || 0}</strong> Chapters Available</span>
+                        <span>📖 <strong>${spotlight.chapter_count || 40}+</strong> Chapters Available</span>
                         <span>•</span>
-                        
+                        <span>Source: <strong>${escapeHtml(spotlight.source_site || 'Original')}</strong></span>
                         ${(spotlight.tags || []).slice(0, 3).map(t => `<span class="badge">${escapeHtml(t)}</span>`).join('')}
                     </div>
                     <p class="spotlight-desc">
-                        
+                        Dive into the high-octane martial arts epic filled with unparalleled power growth, masteries, and cybernetic ascension in a ruthless murim world.
                     </p>
                     <div class="spotlight-actions">
                         <a href="/series/${encodeURIComponent(spotlight.slug)}/chapter/1" class="btn btn-primary">
@@ -352,7 +353,7 @@ function getFilteredSeriesHTML() {
                     ` : ''}
                     <div class="series-card-meta">
                         <span>📖 ${s.chapter_count || 0} chapters</span>
-                        
+                        ${s.source_site ? `<span class="series-card-source">${escapeHtml(s.source_site)}</span>` : ''}
                     </div>
                     ${progress ? `
                         <div style="font-size:0.75rem; color:var(--accent-primary-hover); margin-top:8px; font-weight:700;">
@@ -424,9 +425,10 @@ async function renderSeriesDetail(app, slug) {
                     <h1>${escapeHtml(data.title)}</h1>
                     
                     <div class="series-badges">
-                        
+                        <span class="badge crimson">🔥 MANHWA</span>
                         <span class="badge accent">📚 ${chapters.length} Chapters</span>
                         <span class="badge">Status: ${escapeHtml(data.status || 'Ongoing')}</span>
+                        ${data.source_site ? `<span class="badge source">Source: ${escapeHtml(data.source_site)}</span>` : ''}
                         ${(data.tags || []).map(t => `<span class="badge">${escapeHtml(t)}</span>`).join('')}
                     </div>
 
