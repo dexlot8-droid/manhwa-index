@@ -62,7 +62,7 @@ async function getSeries(slug, forceRefresh = false) {
     if (!forceRefresh && memoryCache.series.has(slug)) {
         return memoryCache.series.get(slug);
     }
-    const data = await fetchJSON("/series:" + encodeURIComponent(slug));
+    const data = await fetchJSON("/series:id:" + encodeURIComponent(slug));
     if (data && data.title) {
         // Sort chapters ascending by number
         if (Array.isArray(data.chapters)) {

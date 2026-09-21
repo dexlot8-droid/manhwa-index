@@ -16,30 +16,55 @@ async function handleRequest(event) {
         return handleSync(event);
     }
     
+    // Resolve slug to numeric series ID
+    if (path.startsWith('series:id:')) {
+        const slug = decodeURIComponent(path.slice(10));
+        const allSeries = await MANHWA_KV.get('all_series', { type: 'json' });
+        if (allSeries && allSeries.series) {
+            const series = allSeries.series.find(s => s.slug === slug);
+            if (series) {
+                const data = await MANHWA_KV.get('series:' + series.id, { type: 'json' });
+                if (data) {
+                    return new Response(JSON.stringify(data), {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                            'Cache-Control': 'public, max-age=300'
+                        }
+                    });
+                }
+            }
+        }
+        return new Response(
+            JSON.stringify({ error: 'Not found', slug }),
+            { status: 404, headers: { 'Content-Type': 'application/json' } }
+        );
+    }
+    
     const key = path;
     if (!key || key === 'index.html') {
         return fetch(request);
     }
     
     try {
-        const value = await MANHWA_KV.get(key, { type: "json" });
+        const value = await MANHWA_KV.get(key, { type: 'json' });
         if (value === null) {
             return new Response(
-                JSON.stringify({ error: "Not found", key }),
-                { status: 404, headers: { "Content-Type": "application/json" } }
+                JSON.stringify({ error: 'Not found', key }),
+                { status: 404, headers: { 'Content-Type': 'application/json' } }
             );
         }
         return new Response(JSON.stringify(value), {
             headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "public, max-age=300"
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'public, max-age=300'
             }
         });
     } catch (err) {
         return new Response(
-            JSON.stringify({ error: "Internal error", message: err.message }),
-            { status: 500, headers: { "Content-Type": "application/json" } }
+            JSON.stringify({ error: 'Internal error', message: err.message }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } }
         );
     }
 }
@@ -49,7 +74,7 @@ async function handleSync(event) {
         const body = await event.request.json();
         const chapters = body.chapters || [];
         const all_series = body.all_series || null;
-        const batchSize = 100;  // Smaller batches to avoid timeout
+        const batchSize = 100;
         
         let synced = 0;
         let errors = 0;
@@ -59,26 +84,24 @@ async function handleSync(event) {
             const batch = chapters.slice(i, i + batchSize);
             for (const ch of batch) {
                 try {
-                    await MANHWA_KV.put(`chapter:${ch.id}`, JSON.stringify(ch));
+                    await MANHWA_KV.put('chapter:' + ch.id, JSON.stringify(ch));
                     synced++;
                 } catch(e) {
                     errors++;
                     if (errorDetails.length < 3) errorDetails.push(e.message || 'unknown');
                 }
             }
-            // Small delay between batches
             if (i + batchSize < chapters.length) {
                 await new Promise(r => setTimeout(r, 100));
             }
         }
         
-        // Write all_series metadata
         if (all_series) {
             try {
                 await MANHWA_KV.put('all_series', JSON.stringify(all_series));
             } catch(e) {
                 errors++;
-                errorDetails.push(`all_series: ${e.message}`);
+                errorDetails.push('all_series: ' + e.message);
             }
         }
         
@@ -91,8 +114,8 @@ async function handleSync(event) {
             errorDetails
         }), {
             headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*"
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
             }
         });
     } catch (err) {
@@ -101,7 +124,7 @@ async function handleSync(event) {
             error: err.message
         }), {
             status: 500,
-            headers: { "Content-Type": "application/json" }
+            headers: { 'Content-Type': 'application/json' }
         });
     }
 }
