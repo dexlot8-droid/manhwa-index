@@ -37,30 +37,30 @@ async function loadChapter() {
     
     titleEl.textContent = data.title || ("Chapter " + currentChapter);
     
-    // Render images with lazy loading
+    // Render images with lazy loading + proxy hotlink-protected images
     let html = "";
     for (let i = 0; i < data.image_urls.length; i++) {
-        const imgUrl = data.image_urls[i];
-        html += `<img src="${imgUrl}" alt="Page ${i + 1}" loading="lazy" onerror="this.style.display=none">`;
+        const imgUrl = "/proxy/image?url=" + encodeURIComponent(data.image_urls[i]);
+        html += '<img src="' + imgUrl + '" alt="Page ' + (i + 1) + '" loading="lazy" onerror="this.style.display=\'none\'">';
     }
     imagesEl.innerHTML = html;
     
     // Update navigation
     const prevCh = currentChapter - 1;
     const nextCh = currentChapter + 1;
-    const prevUrl = `/chapter.html?slug=${encodeURIComponent(seriesSlug)}&ch=${prevCh}`;
-    const nextUrl = `/chapter.html?slug=${encodeURIComponent(seriesSlug)}&ch=${nextCh}`;
+    const prevUrl = "/chapter.html?slug=" + encodeURIComponent(seriesSlug) + "&ch=" + prevCh;
+    const nextUrl = "/chapter.html?slug=" + encodeURIComponent(seriesSlug) + "&ch=" + nextCh;
     
     const prevEl = document.getElementById("prevCh");
     const nextEl = document.getElementById("nextCh");
     const prevEl2 = document.getElementById("prevCh2");
     const nextEl2 = document.getElementById("nextCh2");
     
-    if (prevEl) prevEl.href = prevEl2.href = prevEl2 ? prevUrl : prevUrl;
-    if (nextEl) nextEl.href = nextEl2.href = nextEl2 ? nextUrl : nextUrl;
+    if (prevEl) { prevEl.href = prevUrl; if (prevEl2) prevEl2.href = prevUrl; }
+    if (nextEl) { nextEl.href = nextUrl; if (nextEl2) nextEl2.href = nextUrl; }
     
     // Update page title
-    document.title = `${data.title || "Chapter " + currentChapter} - Dex Manhwa`;
+    document.title = (data.title || "Chapter " + currentChapter) + " - Dex Manhwa";
     
     // Save reading history
     const seriesData = await getSeries(seriesSlug);
