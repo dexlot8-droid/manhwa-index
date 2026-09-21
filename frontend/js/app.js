@@ -1,5 +1,5 @@
 /**
- * Manhwa Index - High-Performance Modern Webtoon Application
+ * Dex Manhwa - High-Performance Modern Webtoon Application
  * Handles routing, views, search/filter, reader ergonomics, and persistence.
  */
 
@@ -133,7 +133,7 @@ function render() {
 }
 
 function renderHome(app) {
-    document.title = 'Manhwa Index - Premium Webtoon Reader';
+    document.title = 'Dex Manhwa - Premium Webtoon Reader';
     document.body.classList.remove('in-reader');
 
     const genreSet = new Set();
@@ -399,7 +399,7 @@ async function renderSeriesDetail(app, slug) {
     }
 
     currentSeries = data;
-    document.title = `${data.title} - Manhwa Index`;
+    document.title = `${data.title} - Dex Manhwa`;
 
     chapterFilterQuery = '';
     const chapters = data.chapters || [];
@@ -600,7 +600,7 @@ async function renderChapterReader(app, slug, chNum) {
     StorageService.saveHistory(slug, chNum, seriesData, chapterData.title || `Chapter ${chNum}`);
 
     const seriesTitle = seriesData.title;
-    document.title = `${seriesTitle} Ch.${chNum} - Manhwa Index`;
+    document.title = `${seriesTitle} Ch.${chNum} - Dex Manhwa`;
 
     const chNumbers = chapters.map(ch => parseFloat(ch.number));
     const currIdx = chNumbers.indexOf(chNum);

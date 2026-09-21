@@ -1,5 +1,5 @@
 /**
- * API client & State Storage for Manhwa Index frontend.
+ * API client & State Storage for Dex Manhwa frontend.
  * Talks to Cloudflare Worker proxy reading from Cloudflare KV.
  * Uses bundled series format: all chapters inside series:X value.
  */

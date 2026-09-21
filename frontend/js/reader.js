@@ -60,7 +60,7 @@ async function loadChapter() {
     if (nextEl) nextEl.href = nextEl2.href = nextEl2 ? nextUrl : nextUrl;
     
     // Update page title
-    document.title = `${data.title || "Chapter " + currentChapter} - Manhwa Index`;
+    document.title = `${data.title || "Chapter " + currentChapter} - Dex Manhwa`;
     
     // Save reading history
     const seriesData = await getSeries(seriesSlug);
