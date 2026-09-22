@@ -63,9 +63,23 @@ async function loadChapter() {
     document.title = (data.title || "Chapter " + currentChapter) + " - Dex Manhwa";
     
     // Wire up download button
-    const dlBtn = document.getElementById("downloadChapterBtn");
+    const dlBtn = document.getElementById('downloadChapterBtn');
     if (dlBtn) {
-        dlBtn.addEventListener("click", () => downloadChapter(seriesSlug, currentChapter, data));
+        dlBtn.addEventListener('click', () => downloadChapter(seriesSlug, currentChapter, data));
+    }
+    
+    // Show download counter
+    const counter = document.getElementById('downloadCounter');
+    if (counter) {
+        const count = getDownloadCount();
+        if (count >= 10) {
+            counter.textContent = `Daily limit reached (${count}/10)`;
+            counter.style.color = '#ff4444';
+        } else if (count > 0) {
+            counter.textContent = `Downloads today: ${count}/10`;
+        } else {
+            counter.textContent = `0/10 downloads today`;
+        }
     }
     
     // Save reading history
@@ -151,6 +165,9 @@ async function downloadChapter(slug, chapterNum, chapterData) {
         URL.revokeObjectURL(url);
         
         incrementDownloadCount();
+        
+        const counter = document.getElementById('downloadCounter');
+        if (counter) counter.textContent = `Downloads today: ${getDownloadCount()}/10`;
         
         if (btn) { btn.disabled = false; btn.innerHTML = "<span>⬇️</span> Download Again"; }
     } catch (err) {

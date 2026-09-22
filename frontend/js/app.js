@@ -655,6 +655,7 @@ async function renderChapterReader(app, slug, chNum) {
                     <button class="btn btn-download" id="downloadChapterBtn" style="margin-left:10px;padding:6px 14px;font-size:0.9rem">
                         ⬇️ Download
                     </button>
+                    <span id="downloadCounter" style="margin-left:10px;font-size:0.85rem;color:#888;"></span>
                 </div>
             </div>
 
@@ -733,7 +734,21 @@ async function renderChapterReader(app, slug, chNum) {
     // Wire up download button
     const dlBtn = document.getElementById('downloadChapterBtn');
     if (dlBtn) {
-        dlBtn.addEventListener('click', () => downloadChapter(slug, chNum, chapterData));
+        dlBtn.addEventListener('click', () => downloadChapter(seriesSlug, currentChapter, data));
+    }
+    
+    // Show download counter
+    const counter = document.getElementById('downloadCounter');
+    if (counter) {
+        const count = getDownloadCount();
+        if (count >= 10) {
+            counter.textContent = `Daily limit reached (${count}/10)`;
+            counter.style.color = '#ff4444';
+        } else if (count > 0) {
+            counter.textContent = `Downloads today: ${count}/10`;
+        } else {
+            counter.textContent = `0/10 downloads today`;
+        }
     }
 
     const canvas = document.getElementById('readerCanvas');
@@ -898,12 +913,16 @@ function incrementDownloadCount() {
 async function downloadChapter(slug, chapterNum, chapterData) {
     const MAX_DAILY = 10;
     if (getDownloadCount() >= MAX_DAILY) {
+        const counter = document.getElementById('downloadCounter');
+        if (counter) counter.textContent = `Daily limit reached (${getDownloadCount()}/${MAX_DAILY})`;
         alert(`Daily download limit reached (${MAX_DAILY}/day). Come back tomorrow.`);
         return;
     }
     
     const btn = document.getElementById('downloadChapterBtn');
+    const counter = document.getElementById('downloadCounter');
     if (btn) { btn.disabled = true; btn.textContent = "Downloading..."; }
+    if (counter) counter.textContent = "Downloading...";
     
     try {
         if (!chapterData || !chapterData.image_urls || chapterData.image_urls.length === 0) {
@@ -954,6 +973,10 @@ async function downloadChapter(slug, chapterNum, chapterData) {
         URL.revokeObjectURL(url);
         
         incrementDownloadCount();
+        
+        const counter = document.getElementById('downloadCounter');
+        if (counter) counter.textContent = `Downloads today: ${getDownloadCount()}/${MAX_DAILY}`;
+        
         if (btn) { btn.disabled = false; btn.textContent = "⬇️ Download Again"; }
     } catch (err) {
         console.error("Download failed:", err);
