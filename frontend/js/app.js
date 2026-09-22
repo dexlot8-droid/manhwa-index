@@ -413,6 +413,14 @@ async function renderSeriesDetail(app, slug) {
         return;
     }
 
+    // Ensure cover_url is populated from all_series if missing
+    if (!data.cover_url) {
+        const apiSeries = allSeries.find(s => s.slug === slug);
+        if (apiSeries && apiSeries.cover_url) {
+            data.cover_url = apiSeries.cover_url;
+        }
+    }
+
     currentSeries = data;
     document.title = `${data.title} - Dex Manhwa`;
 
