@@ -124,7 +124,7 @@ async function downloadChapter(slug, chapterNum, chapterData) {
         
         for (let i = 0; i < chapterData.image_urls.length; i++) {
             try {
-                const imgUrl = "/proxy/image?url=" + encodeURIComponent(chapterData.image_urls[i]);
+                const imgUrl = "https://manhwa-kv-proxy.dexlot8.workers.dev/proxy/image?url=" + encodeURIComponent(chapterData.image_urls[i]);
                 const res = await fetch(imgUrl);
                 if (!res.ok) continue;
                 const blob = await res.blob();
