@@ -413,12 +413,10 @@ async function renderSeriesDetail(app, slug) {
         return;
     }
 
-    // Ensure cover_url is populated from all_series if missing
-    if (!data.cover_url) {
-        const apiSeries = allSeries.find(s => s.slug === slug);
-        if (apiSeries && apiSeries.cover_url) {
-            data.cover_url = apiSeries.cover_url;
-        }
+    // Always use cover_url from all_series (has correct hashes) if available
+    const apiSeries = allSeries.find(s => s.slug === slug);
+    if (apiSeries && apiSeries.cover_url) {
+        data.cover_url = apiSeries.cover_url;
     }
 
     currentSeries = data;
@@ -450,7 +448,7 @@ async function renderSeriesDetail(app, slug) {
                         
                         <span class="badge accent">📚 ${chapters.length} Chapters</span>
                         <span class="badge">Status: ${escapeHtml(data.status || 'Ongoing')}</span>
-                        ${(data.tags || []).map(t => `<span class="badge">${escapeHtml(t)}</span>`).join('')}
+                        ${(data.tags || []).map(t => `<span class="badge">${escapeHtml(typeof t === 'object' ? t.name || t.title || JSON.stringify(t) : t)}</span>`).join('')}
                     </div>
 
                     <div class="series-actions">
