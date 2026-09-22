@@ -16,10 +16,18 @@ let lastScrollY = 0;
 let isNavHidden = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
-    initRouter();
-    initGlobalEvents();
-    await loadAllSeries();
-    render();
+    try {
+        initRouter();
+        initGlobalEvents();
+        await loadAllSeries();
+        render();
+    } catch (err) {
+        console.error('Init error:', err);
+        const app = document.getElementById('app');
+        if (app) {
+            app.innerHTML = '<div style="color:#ff4444;padding:20px;font-family:monospace">Error: ' + err.message + '<br><br>' + err.stack + '</div>';
+        }
+    }
 });
 
 function initRouter() {
@@ -60,9 +68,14 @@ function initGlobalEvents() {
 }
 
 async function loadAllSeries() {
-    const data = await getAllSeries();
-    if (data && Array.isArray(data.series)) {
-        allSeries = data.series;
+    try {
+        const data = await getAllSeries();
+        if (data && Array.isArray(data.series)) {
+            allSeries = data.series;
+        }
+    } catch (err) {
+        console.error('loadAllSeries error:', err);
+        throw err;
     }
 }
 
@@ -109,27 +122,29 @@ function render() {
 
     window.scrollTo({ top: 0, behavior: 'instant' });
 
-    // Match: /series/:slug/chapter/:num
-    const chapterMatch = path.match(/^\/series\/([^\/]+)\/chapter\/([^\/]+)/);
-    if (chapterMatch) {
-        const slug = decodeURIComponent(chapterMatch[1]);
-        const chNum = parseFloat(chapterMatch[2]);
-        renderChapterReader(app, slug, chNum);
-        return;
+    try {
+        // Match: /series/:slug/chapter/:num
+        const chapterMatch = path.match(/^\/series\/([^\/]+)\/chapter\/([^\/]+)/);
+        if (chapterMatch) {
+            const slug = decodeURIComponent(chapterMatch[1]);
+            const chNum = parseFloat(chapterMatch[2]);
+            renderChapterReader(app, slug, chNum);
+            return;
+        }
+
+        // Match: /series/:slug
+        const seriesMatch = path.match(/^\/series\/([^\/]+)\/?$/);
+        if (seriesMatch) {
+            const slug = decodeURIComponent(seriesMatch[1]);
+            renderSeriesDetail(app, slug);
+            return;
+        }
+
+        renderHome(app);
+    } catch (err) {
+        console.error('Render error:', err);
+        app.innerHTML = '<div style="color:#ff4444;padding:20px;font-family:monospace">Render Error: ' + err.message + '<br><br>' + err.stack + '</div>';
     }
-
-    // Non-reader views: ensure reader mode is disabled
-    document.body.classList.remove('in-reader');
-
-    // Match: /series/:slug
-    const seriesMatch = path.match(/^\/series\/([^\/]+)\/?$/);
-    if (seriesMatch) {
-        const slug = decodeURIComponent(seriesMatch[1]);
-        renderSeriesDetail(app, slug);
-        return;
-    }
-
-    renderHome(app);
 }
 
 function renderHome(app) {
