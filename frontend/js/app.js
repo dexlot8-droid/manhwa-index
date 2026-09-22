@@ -461,11 +461,6 @@ async function renderSeriesDetail(app, slug) {
                         <button class="btn btn-secondary" id="bookmarkBtn">
                             ${isBookmarked ? '★ Bookmarked' : '☆ Bookmark'}
                         </button>
-                        ${chapters.length > 0 ? `
-                            <button class="btn btn-download" id="downloadBtn" onclick="downloadSeries('${slug}')">
-                                ⬇️ Download
-                            </button>
-                        ` : ''}
                     </div>
 
                     <div class="series-description">
@@ -877,78 +872,4 @@ function escapeHtml(text) {
 }
 
 
-// --- Download functionality ---
-function getDownloadCount() {
-    const today = new Date().toISOString().slice(0, 10);
-    const data = JSON.parse(localStorage.getItem('dexmanhwa_downloads') || '{}');
-    if (data.date === today) return data.count;
-    return 0;
-}
-
-function incrementDownloadCount() {
-    const today = new Date().toISOString().slice(0, 10);
-    const data = { date: today, count: getDownloadCount() + 1 };
-    localStorage.setItem('dexmanhwa_downloads', JSON.stringify(data));
-}
-
-async function downloadSeries(slug) {
-    const MAX_DAILY = 10;
-    if (getDownloadCount() >= MAX_DAILY) {
-        alert('Daily download limit reached (' + MAX_DAILY + '/day). Come back tomorrow.');
-        return;
-    }
-    const btn = document.getElementById('downloadBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Downloading...'; }
-    try {
-        const seriesData = await getSeries(slug);
-        if (!seriesData || !seriesData.chapters || seriesData.chapters.length === 0) {
-            alert('No chapters to download.');
-            if (btn) { btn.disabled = false; btn.textContent = '⬇️ Download'; }
-            return;
-        }
-        if (!window.JSZip) {
-            await new Promise((resolve, reject) => {
-                const s = document.createElement('script');
-                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-                s.onload = resolve; s.onerror = reject;
-                document.head.appendChild(s);
-            });
-        }
-        const zip = new JSZip();
-        const imgFolder = zip.folder(seriesData.slug || 'series');
-        const chaptersToDownload = seriesData.chapters.slice(0, 3);
-        let downloaded = 0;
-        for (const ch of chaptersToDownload) {
-            if (!ch.image_urls || ch.image_urls.length === 0) continue;
-            const chFolder = imgFolder.folder('ch' + ch.number);
-            for (let i = 0; i < ch.image_urls.length; i++) {
-                try {
-                    const imgUrl = '/proxy/image?url=' + encodeURIComponent(ch.image_urls[i]);
-                    const res = await fetch(imgUrl);
-                    if (!res.ok) continue;
-                    const blob = await res.blob();
-                    const ext = ch.image_urls[i].split('.').pop().split('?')[0] || 'jpg';
-                    chFolder.file(String(i+1).padStart(3,'0') + '.' + ext, blob);
-                    downloaded++;
-                } catch(e) {}
-            }
-        }
-        if (downloaded === 0) {
-            alert('Could not download images.');
-            if (btn) { btn.disabled = false; btn.textContent = '⬇️ Download'; }
-            return;
-        }
-        const blob = await zip.generateAsync({ type: 'blob' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = (seriesData.slug || 'manhwa') + '_ch1-' + chaptersToDownload.length + '.zip';
-        a.click();
-        URL.revokeObjectURL(url);
-        incrementDownloadCount();
-        if (btn) { btn.disabled = false; btn.innerHTML = '⬇️ Download Again'; }
-    } catch (err) {
-        alert('Download failed: ' + err.message);
-        if (btn) { btn.disabled = false; btn.textContent = '⬇️ Download'; }
-    }
-}
+// --- Download functionality moved to reader.js (per-chapter download) ---
