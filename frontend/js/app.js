@@ -734,7 +734,7 @@ async function renderChapterReader(app, slug, chNum) {
     // Wire up download button
     const dlBtn = document.getElementById('downloadChapterBtn');
     if (dlBtn) {
-        dlBtn.addEventListener('click', () => downloadChapter(seriesSlug, currentChapter, data));
+        dlBtn.addEventListener('click', () => downloadChapter(slug, chNum, chapterData));
     }
     
     // Show download counter
