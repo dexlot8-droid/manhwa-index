@@ -170,7 +170,7 @@ function renderHome(app) {
     app.innerHTML = `
         ${spotlight && !searchQuery && activeGenre === 'All' ? `
             <div class="spotlight-hero">
-                <div class="spotlight-bg" style="background-image: url('${spotlight.cover_url || '/img/placeholder.svg'}');"></div>
+                <div class="spotlight-bg" style="background-image: url('${proxyUrl(spotlight.cover_url)}');"></div>
                 <div class="spotlight-vignette"></div>
                 <div class="spotlight-content">
                     <h1 class="spotlight-title">${escapeHtml(spotlight.title)}</h1>
@@ -193,7 +193,7 @@ function renderHome(app) {
                     </div>
                 </div>
                 <div class="spotlight-cover-side">
-                    <img src="${spotlight.cover_url || '/img/placeholder.svg'}" alt="${escapeHtml(spotlight.title)}" class="spotlight-cover-art" referrerpolicy="no-referrer" onerror="this.src='/img/placeholder.svg'">
+                    <img src="${proxyUrl(spotlight.cover_url)}" alt="${escapeHtml(spotlight.title)}" class="spotlight-cover-art" referrerpolicy="no-referrer" onerror="this.src='/img/placeholder.svg'">
                 </div>
             </div>
         ` : ''}
@@ -240,7 +240,7 @@ function renderHome(app) {
                 <div class="continue-grid">
                     ${historyEntries.map(item => `
                         <a href="/series/${encodeURIComponent(item.slug)}/chapter/${item.lastChapterNum}" class="continue-card">
-                            <img src="${item.coverUrl || '/img/placeholder.svg'}" alt="${escapeHtml(item.seriesTitle)}" class="continue-thumb" onerror="this.src='/img/placeholder.svg'" referrerpolicy="no-referrer">
+                            <img src="${proxyUrl(item.coverUrl)}" alt="${escapeHtml(item.seriesTitle)}" class="continue-thumb" onerror="this.src='/img/placeholder.svg'" referrerpolicy="no-referrer">
                             <div class="continue-info">
                                 <div class="continue-title">${escapeHtml(item.seriesTitle)}</div>
                                 <div class="continue-chapter">Resume Ch. ${item.lastChapterNum}</div>
@@ -351,7 +351,7 @@ function getFilteredSeriesHTML() {
                         <span class="series-card-badge">${s.chapter_count || 0} CH</span>
                     </div>
                     <img 
-                        src="${s.cover_url || '/img/placeholder.svg'}" 
+                        src="${proxyUrl(s.cover_url)}" 
                         alt="${escapeHtml(s.title)}" 
                         loading="lazy" 
                         referrerpolicy="no-referrer"
@@ -438,10 +438,10 @@ async function renderSeriesDetail(app, slug) {
         </div>
 
         <div class="series-detail-hero">
-            <img src="${data.cover_url || '/img/placeholder.svg'}" class="hero-backdrop" alt="" aria-hidden="true" referrerpolicy="no-referrer">
+            <img src="${proxyUrl(data.cover_url)}" class="hero-backdrop" alt="" aria-hidden="true" referrerpolicy="no-referrer">
             <div class="hero-content">
                 <div class="series-cover-wrapper">
-                    <img src="${data.cover_url || '/img/placeholder.svg'}" alt="${escapeHtml(data.title)}" referrerpolicy="no-referrer" onerror="this.src='/img/placeholder.svg'">
+                    <img src="${proxyUrl(data.cover_url)}" alt="${escapeHtml(data.title)}" referrerpolicy="no-referrer" onerror="this.src='/img/placeholder.svg'">
                 </div>
                 <div class="series-info">
                     <h1>${escapeHtml(data.title)}</h1>
@@ -891,6 +891,12 @@ function handleKeyboardNav(e) {
     } else if (e.key === 'Escape') {
         navigate(`/series/${encodeURIComponent(slug)}`);
     }
+}
+
+// --- Helper: route image URLs through Worker proxy to avoid CORS blocks ---
+function proxyUrl(url) {
+    if (!url) return '/img/placeholder.svg';
+    return 'https://manhwa-kv-proxy.dexlot8.workers.dev/proxy/image?url=' + encodeURIComponent(url);
 }
 
 function escapeHtml(text) {
