@@ -17,15 +17,10 @@ let isNavHidden = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        console.log('[DexManhwa] DOMContentLoaded fired');
         initRouter();
-        console.log('[DexManhwa] Router initialized');
         initGlobalEvents();
-        console.log('[DexManhwa] Global events initialized');
         await loadAllSeries();
-        console.log('[DexManhwa] Series loaded:', allSeries.length);
         render();
-        console.log('[DexManhwa] Render complete');
     } catch (err) {
         console.error('[DexManhwa] Init error:', err);
         const app = document.getElementById('app');
