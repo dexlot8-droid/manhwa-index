@@ -5,26 +5,26 @@
 
 :root {
     /* Abyss Dark Palette */
-    --bg-void: #040508;
-    --bg-base: #07090f;
-    --bg-surface: #0d101a;
-    --bg-card: #121624;
-    --bg-card-hover: #181e30;
+    --bg-void: #0a0b10;
+    --bg-base: #0a0b10;
+    --bg-surface: #0f1218;
+    --bg-card: #10142a;
+    --bg-card-hover: #152040;
     --bg-card-glass: rgba(18, 22, 36, 0.75);
     --bg-input: #0f1320;
 
     /* Shadow Monarch & Cyberpunk Accents */
-    --accent-primary: #8b5cf6;            /* Monarch Violet */
-    --accent-primary-hover: #a78bfa;
-    --accent-glow: rgba(139, 92, 246, 0.4);
-    --accent-subtle: rgba(139, 92, 246, 0.12);
+    --accent-primary: #ff3366;            /* Monarch Violet */
+    --accent-primary-hover: #ff5588;
+    --accent-glow: rgba(255, 51, 102, 0.4);
+    --accent-subtle: rgba(255, 51, 102, 0.12);
 
     --accent-crimson: #ff0055;            /* Battle Crimson */
     --accent-crimson-hover: #ff2a70;
     --accent-crimson-glow: rgba(255, 0, 85, 0.4);
 
-    --accent-cyan: #00f2fe;               /* Mana Cyan */
-    --accent-cyan-glow: rgba(0, 242, 254, 0.35);
+    --accent-cyan: #00d2ff;               /* Mana Cyan */
+    --accent-cyan-glow: rgba(0, 210, 255, 0.35);
 
     /* Text Colors */
     --text-pure: #ffffff;
@@ -34,8 +34,8 @@
 
     /* Borders */
     --border-subtle: #1c2236;
-    --border-card: rgba(139, 92, 246, 0.15);
-    --border-hover: rgba(139, 92, 246, 0.5);
+    --border-card: rgba(255, 51, 102, 0.15);
+    --border-hover: rgba(255, 51, 102, 0.5);
 
     /* Radii & Shadows */
     --radius-sm: 6px;
@@ -73,8 +73,8 @@ body {
     flex-direction: column;
     overflow-x: hidden;
     background-image: 
-        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(139, 92, 246, 0.15), transparent 70%),
-        radial-gradient(ellipse 60% 40% at 85% 15%, rgba(0, 242, 254, 0.08), transparent 60%);
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(255, 51, 102, 0.15), transparent 70%),
+        radial-gradient(ellipse 60% 40% at 85% 15%, rgba(0, 210, 255, 0.08), transparent 60%);
     background-attachment: fixed;
     -webkit-font-smoothing: antialiased;
 }
@@ -180,8 +180,8 @@ header .container {
 }
 
 .header-badge {
-    background: rgba(139, 92, 246, 0.12);
-    border: 1px solid rgba(139, 92, 246, 0.3);
+    background: rgba(255, 51, 102, 0.12);
+    border: 1px solid rgba(255, 51, 102, 0.3);
     color: var(--accent-primary-hover);
     padding: 2px 8px;
     border-radius: var(--radius-sm);
@@ -263,7 +263,7 @@ header .container {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: linear-gradient(135deg, rgba(255, 0, 85, 0.2), rgba(139, 92, 246, 0.2));
+    background: linear-gradient(135deg, rgba(255, 0, 85, 0.2), rgba(255, 51, 102, 0.2));
     border: 1px solid rgba(255, 0, 85, 0.4);
     color: #ff5287;
     font-size: 0.75rem;
@@ -335,7 +335,7 @@ header .container {
     border-radius: var(--radius-lg);
     object-fit: cover;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 30px var(--accent-glow);
-    border: 2px solid rgba(139, 92, 246, 0.3);
+    border: 2px solid rgba(255, 51, 102, 0.3);
     transform: perspective(1000px) rotateY(-8deg);
     transition: transform 0.4s ease;
 }
@@ -577,8 +577,8 @@ header .container {
     font-size: 0.75rem;
     font-weight: 600;
     color: #fff;
-    background: rgba(139, 92, 246, 0.25);
-    border: 1px solid rgba(139, 92, 246, 0.4);
+    background: rgba(255, 51, 102, 0.25);
+    border: 1px solid rgba(255, 51, 102, 0.4);
     padding: 4px 10px;
     border-radius: var(--radius-sm);
 }
@@ -722,8 +722,8 @@ header .container {
     font-size: 0.65rem;
     font-weight: 800;
     color: var(--accent-cyan);
-    background: rgba(0, 242, 254, 0.08);
-    border: 1px solid rgba(0, 242, 254, 0.2);
+    background: rgba(0, 210, 255, 0.08);
+    border: 1px solid rgba(0, 210, 255, 0.2);
     padding: 2px 6px;
     border-radius: var(--radius-sm);
 }
@@ -770,7 +770,7 @@ header .container {
     border-radius: var(--radius-lg);
     overflow: hidden;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 25px var(--accent-glow);
-    border: 2px solid rgba(139, 92, 246, 0.3);
+    border: 2px solid rgba(255, 51, 102, 0.3);
     aspect-ratio: 1 / 1.45;
     background: var(--bg-surface);
 }
@@ -832,8 +832,8 @@ header .container {
 
 .badge.source {
     color: var(--accent-cyan);
-    border-color: rgba(0, 242, 254, 0.3);
-    background: rgba(0, 242, 254, 0.08);
+    border-color: rgba(0, 210, 255, 0.3);
+    background: rgba(0, 210, 255, 0.08);
 }
 
 .series-actions {
@@ -1041,7 +1041,7 @@ body.in-reader footer {
     background: rgba(7, 9, 15, 0.92);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+    border-bottom: 1px solid rgba(255, 51, 102, 0.2);
     padding: 10px 20px;
     display: flex;
     align-items: center;
@@ -1405,7 +1405,7 @@ body.in-reader footer {
 .loading-spinner {
     width: 46px;
     height: 46px;
-    border: 3px solid rgba(139, 92, 246, 0.15);
+    border: 3px solid rgba(255, 51, 102, 0.15);
     border-top-color: var(--accent-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
